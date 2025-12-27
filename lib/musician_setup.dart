@@ -180,7 +180,7 @@ class _MusicianSetupPageState extends State<MusicianSetupPage> {
     required Function(String?) onChanged,
   }) {
     return DropdownButtonFormField<String>(
-      value: value,
+      initialValue: value,
       hint: const Text('Bitte wählen'),
       isExpanded: true,
       dropdownColor: Colors.blue.shade700,

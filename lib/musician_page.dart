@@ -1,13 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:path_provider/path_provider.dart';
-import 'dart:typed_data';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 class MusicianPage extends StatefulWidget {
@@ -35,6 +35,10 @@ class _MusicianPageState extends State<MusicianPage> {
   bool _isLoading = true;
   RawDatagramSocket? _udpSocket;
 
+  // NavigatorKey, um PDFs gezielt zu schließen
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+  Route? _currentPdfRoute;
+
   @override
   void initState() {
     super.initState();
@@ -61,7 +65,6 @@ class _MusicianPageState extends State<MusicianPage> {
     });
 
     _localIp = await _getLocalIp();
-
     if (!mounted) return;
 
     setState(() {
@@ -128,8 +131,7 @@ class _MusicianPageState extends State<MusicianPage> {
     final map = jsonDecode(message as String);
 
     if (map['type'] == 'send_piece') {
-      if (map['instrument'] != null &&
-          map['instrument'] != widget.instrument) return;
+      if (map['instrument'] != null && map['instrument'] != widget.instrument) return;
       if (map['voice'] != null && map['voice'] != widget.voice) return;
 
       final bytes = base64Decode(map['data']);
@@ -140,11 +142,41 @@ class _MusicianPageState extends State<MusicianPage> {
           name: map['name'],
           path: file.path,
           receivedAt: DateTime.now(),
+          active: true,
         ));
       });
 
+      // PDF öffnen und Route speichern
+      if (mounted) {
+        final route = MaterialPageRoute(
+          builder: (_) => PdfViewerScreen(filePath: file.path, title: map['name']),
+        );
+        _currentPdfRoute = route;
+        _navigatorKey.currentState?.push(route);
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Neue Noten: ${map['name']}')),
+      );
+    }
+
+    if (map['type'] == 'end_piece') {
+      setState(() {
+        for (var piece in _received) {
+          if (piece.name.startsWith(map['name'])) {
+            piece.active = false;
+          }
+        }
+      });
+
+      // PDF Viewer schließen
+      if (_currentPdfRoute != null) {
+        _navigatorKey.currentState?.removeRoute(_currentPdfRoute!);
+        _currentPdfRoute = null;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Stück beendet: ${map['name']}')),
       );
     }
 
@@ -162,81 +194,85 @@ class _MusicianPageState extends State<MusicianPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F6FA),
-      appBar: AppBar(
-        title: const Text('Marschpad – Musiker'),
-        centerTitle: true,
-        backgroundColor: const Color(0xFF0D47A1),
-        foregroundColor: Colors.white,
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            _InfoHeader(
-              instrument: widget.instrument,
-              voice: widget.voice,
-              status: _status,
-              ip: _localIp,
-            ),
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: ElevatedButton.icon(
-                onPressed: _isLoading ? null : _startDiscovery,
-                icon: const Icon(Icons.wifi),
-                label: const Text('Neu verbinden'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue.shade800,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
+    final activePieces = _received.where((p) => p.active).toList();
+
+    return MaterialApp(
+      navigatorKey: _navigatorKey, // NavigatorKey setzen
+      home: Scaffold(
+        backgroundColor: const Color(0xFFF4F6FA),
+        appBar: AppBar(
+          title: const Text('Marschpad – Musiker'),
+          centerTitle: true,
+          backgroundColor: const Color(0xFF0D47A1),
+          foregroundColor: Colors.white,
+        ),
+        body: SafeArea(
+          child: Column(
+            children: [
+              _InfoHeader(
+                instrument: widget.instrument,
+                voice: widget.voice,
+                status: _status,
+                ip: _localIp,
+              ),
+              const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: ElevatedButton.icon(
+                  onPressed: _isLoading ? null : _startDiscovery,
+                  icon: const Icon(Icons.wifi),
+                  label: const Text('Neu verbinden'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue.shade800,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: _received.isEmpty
-                  ? const Center(
-                      child: Text(
-                        'Noch keine Noten empfangen',
-                        style: TextStyle(fontSize: 18, color: Colors.black54),
+              const SizedBox(height: 16),
+              Expanded(
+                child: activePieces.isEmpty
+                    ? const Center(
+                        child: Text(
+                          'Keine aktiven Noten',
+                          style: TextStyle(fontSize: 18, color: Colors.black54),
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: activePieces.length,
+                        itemBuilder: (_, i) {
+                          final p = activePieces[i];
+                          return Card(
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16)),
+                            child: ListTile(
+                              leading: const Icon(Icons.picture_as_pdf,
+                                  size: 36, color: Colors.red),
+                              title: Text(p.name,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold)),
+                              subtitle: Text(
+                                  'Empfangen: ${p.receivedAt.toLocal().toString().split('.')[0]}'),
+                              trailing: const Icon(Icons.open_in_new),
+                              onTap: () {
+                                final route = MaterialPageRoute(
+                                  builder: (_) =>
+                                      PdfViewerScreen(filePath: p.path, title: p.name),
+                                );
+                                _currentPdfRoute = route;
+                                _navigatorKey.currentState?.push(route);
+                              },
+                            ),
+                          );
+                        },
                       ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: _received.length,
-                      itemBuilder: (_, i) {
-                        final p = _received[i];
-                        return Card(
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16)),
-                          child: ListTile(
-                            leading: const Icon(Icons.picture_as_pdf,
-                                size: 36, color: Colors.red),
-                            title: Text(p.name,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold)),
-                            subtitle: Text(
-                                'Empfangen: ${p.receivedAt.toLocal().toString().split('.')[0]}'),
-                            trailing: const Icon(Icons.open_in_new),
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => PdfViewerScreen(
-                                      filePath: p.path, title: p.name),
-                                ),
-                              );
-                            },
-                          ),
-                        );
-                      },
-                    ),
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -244,7 +280,6 @@ class _MusicianPageState extends State<MusicianPage> {
 }
 
 /* ===================== UI COMPONENTS ===================== */
-
 class _InfoHeader extends StatelessWidget {
   final String instrument;
   final String voice;
@@ -273,9 +308,7 @@ class _InfoHeader extends StatelessWidget {
         children: [
           Text(instrument,
               style: const TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white)),
+                  fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)),
           Text(voice,
               style: const TextStyle(fontSize: 18, color: Colors.white70)),
           if (ip != null)
@@ -290,9 +323,7 @@ class _InfoHeader extends StatelessWidget {
             ),
             child: Text(status,
                 style: const TextStyle(
-                    fontSize: 16,
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600)),
+                    fontSize: 16, color: Colors.white, fontWeight: FontWeight.w600)),
           ),
         ],
       ),
@@ -301,16 +332,17 @@ class _InfoHeader extends StatelessWidget {
 }
 
 /* ===================== MODELS ===================== */
-
 class ReceivedPiece {
   final String name;
   final String path;
   final DateTime receivedAt;
+  bool active;
 
   ReceivedPiece({
     required this.name,
     required this.path,
     required this.receivedAt,
+    this.active = true,
   });
 }
 

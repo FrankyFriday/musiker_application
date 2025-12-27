@@ -1,7 +1,7 @@
 name: marschpad
 description: Marschpad - Dirigent + Musiker Apps
 publish_to: "none"
-version: 0.0.1
+version: 0.0.1+1
 
 environment:
   sdk: ">=2.18.0 <4.0.0"
@@ -9,12 +9,12 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  shared_preferences: ^2.0.15
-  path_provider: ^2.0.12
-  http: ^0.13.6
-  web_socket_channel: ^2.2.0
-  uuid: ^3.0.7
-  syncfusion_flutter_pdfviewer: ^20.4.54
+  shared_preferences: ^2.5.4
+  path_provider: ^2.0.14
+  http: ^1.1.0
+  web_socket_channel: ^3.0.3
+  uuid: ^4.1.0
+  syncfusion_flutter_pdfviewer: ^32.1.20
 
 dev_dependencies:
   flutter_test:
