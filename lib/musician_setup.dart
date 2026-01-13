@@ -36,12 +36,13 @@ class _MusicianSetupPageState extends State<MusicianSetupPage> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _selectedInstrument = prefs.getString('instrument');
+
       final voiceNumber = prefs.getString('voice');
       if (voiceNumber != null) {
-        // Anzeige im Dropdown korrekt setzen
         _selectedVoice = _voices.firstWhere(
-            (v) => v.startsWith(voiceNumber),
-            orElse: () => '');
+          (v) => v.startsWith(voiceNumber),
+          orElse: () => "",
+        );
       }
     });
   }
@@ -64,7 +65,6 @@ class _MusicianSetupPageState extends State<MusicianSetupPage> {
 
     // Stimme nur als Zahl extrahieren
     final voiceNumber = _selectedVoice!.split('.').first;
-
     await _savePrefs(voiceNumber);
 
     Navigator.pushReplacement(
@@ -72,8 +72,7 @@ class _MusicianSetupPageState extends State<MusicianSetupPage> {
       MaterialPageRoute(
         builder: (_) => MusicianPage(
           instrument: _selectedInstrument!,
-          voice: voiceNumber, // nur Zahl übergeben
-          conductorPort: 4041,
+          voice: voiceNumber,
         ),
       ),
     );
@@ -84,89 +83,84 @@ class _MusicianSetupPageState extends State<MusicianSetupPage> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Musiker – Einrichtung'),
-        centerTitle: true,
-        elevation: 0,
-        backgroundColor: const Color(0xFF0D47A1),
-      ),
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [
-              Color(0xFF0D47A1),
-              Color(0xFF1565C0),
-            ],
+            colors: [Color(0xFF0D47A1), Color(0xFF1565C0)],
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
           ),
         ),
         child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Kopfbereich
-                const Icon(Icons.music_note, size: 64, color: Colors.white),
-                const SizedBox(height: 16),
-                Text(
-                  'Deine Einstellungen',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 32),
-
-                // Instrument Card
-                _SelectionCard(
-                  title: 'Instrument',
-                  subtitle: 'Wähle dein Instrument',
-                  icon: Icons.queue_music,
-                  child: _buildDropdown(
-                    value: _selectedInstrument,
-                    items: _instruments,
-                    onChanged: (v) => setState(() => _selectedInstrument = v),
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-
-                // Stimme Card
-                _SelectionCard(
-                  title: 'Stimme',
-                  subtitle: 'Wähle deine Stimme',
-                  icon: Icons.record_voice_over,
-                  child: _buildDropdown(
-                    value: _selectedVoice,
-                    items: _voices,
-                    onChanged: (v) => setState(() => _selectedVoice = v),
-                  ),
-                ),
-
-                const SizedBox(height: 40),
-
-                // Weiter Button
-                ElevatedButton.icon(
-                  onPressed: _openMusician,
-                  icon: const Icon(Icons.arrow_forward),
-                  label: const Text(
-                    'Weiter als Musiker',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.blue.shade800,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(28),
+          bottom: false, // entfernt unteren Rand
+          child: MediaQuery.removePadding(
+            context: context,
+            removeBottom: true, // sicherstellen, dass ScrollView nicht unten gepaddet wird
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 16),
+                  const Icon(Icons.music_note, size: 72, color: Colors.white),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Deine Einstellungen',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.5,
                     ),
-                    elevation: 6,
                   ),
-                ),
-              ],
+                  const SizedBox(height: 32),
+                  // Instrument Card
+                  _SelectionCard(
+                    title: 'Instrument',
+                    subtitle: 'Wähle dein Instrument',
+                    icon: Icons.queue_music,
+                    child: _buildDropdown(
+                      value: _selectedInstrument,
+                      items: _instruments,
+                      onChanged: (v) => setState(() => _selectedInstrument = v),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  // Stimme Card
+                  _SelectionCard(
+                    title: 'Stimme',
+                    subtitle: 'Wähle deine Stimme',
+                    icon: Icons.record_voice_over,
+                    child: _buildDropdown(
+                      value: _selectedVoice,
+                      items: _voices,
+                      onChanged: (v) => setState(() => _selectedVoice = v),
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+                  ElevatedButton.icon(
+                    onPressed: _openMusician,
+                    icon: const Icon(Icons.arrow_forward, color: Colors.blueAccent),
+                    label: const Text(
+                      'Weiter als Musiker',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blueAccent,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(28),
+                      ),
+                      elevation: 6,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ),
             ),
           ),
         ),
@@ -180,8 +174,8 @@ class _MusicianSetupPageState extends State<MusicianSetupPage> {
     required Function(String?) onChanged,
   }) {
     return DropdownButtonFormField<String>(
-      initialValue: value,
-      hint: const Text('Bitte wählen'),
+      value: value,
+      hint: const Text('Bitte wählen', style: TextStyle(color: Colors.white70)),
       isExpanded: true,
       dropdownColor: Colors.blue.shade700,
       iconEnabledColor: Colors.white,
@@ -193,6 +187,7 @@ class _MusicianSetupPageState extends State<MusicianSetupPage> {
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,
         ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       ),
       items: items
           .map(
@@ -234,6 +229,7 @@ class _SelectionCard extends StatelessWidget {
             Row(
               children: [
                 CircleAvatar(
+                  radius: 24,
                   backgroundColor: Colors.white.withOpacity(0.2),
                   child: Icon(icon, color: Colors.white),
                 ),
@@ -241,21 +237,13 @@ class _SelectionCard extends StatelessWidget {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 13,
-                      ),
-                    ),
+                    Text(title,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold)),
+                    Text(subtitle,
+                        style: const TextStyle(color: Colors.white70, fontSize: 13)),
                   ],
                 ),
               ],
