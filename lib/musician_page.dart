@@ -92,7 +92,7 @@ class _MusicianPageState extends State<MusicianPage> {
             active: true,
           );
 
-          // ALLE alten Instanzen des Stücks deaktivieren
+          // Alte Instanzen des Stücks deaktivieren
           _received.where((p) => p.name == map['name']).forEach((p) => p.active = false);
 
           _received.add(piece);
@@ -150,7 +150,20 @@ class _MusicianPageState extends State<MusicianPage> {
     final messenger = ScaffoldMessenger.maybeOf(context);
     if (messenger == null) return;
 
-    messenger.showSnackBar(SnackBar(content: Text(text)));
+    messenger.showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.info_outline, color: Colors.white),
+            const SizedBox(width: 8),
+            Expanded(child: Text(text)),
+          ],
+        ),
+        backgroundColor: Colors.blueAccent.shade700,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+    );
   }
 
   @override
@@ -162,6 +175,7 @@ class _MusicianPageState extends State<MusicianPage> {
       appBar: AppBar(
         title: const Text('Marschpad – Musiker'),
         backgroundColor: const Color(0xFF0D47A1),
+        foregroundColor: Colors.white,
         centerTitle: true,
       ),
       body: Column(
@@ -185,17 +199,24 @@ class _MusicianPageState extends State<MusicianPage> {
                     itemBuilder: (_, i) {
                       final p = active[i];
                       return Card(
+                        elevation: 4,
+                        shadowColor: Colors.black26,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
+                        margin: const EdgeInsets.symmetric(vertical: 8),
                         child: ListTile(
-                          leading: const Icon(Icons.picture_as_pdf,
-                              color: Colors.red),
-                          title: Text(p.name,
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.bold)),
+                          leading: const Icon(Icons.picture_as_pdf, color: Colors.red),
+                          title: Text(
+                            p.name,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 16),
+                          ),
                           subtitle: Text(
-                              'Empfangen: ${p.receivedAt.toLocal().toString().split('.')[0]}'),
+                            'Empfangen: ${p.receivedAt.toLocal().toString().split('.')[0]}',
+                            style: const TextStyle(color: Colors.black54),
+                          ),
+                          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                           onTap: () {
                             Navigator.of(context).push(
                               MaterialPageRoute(
@@ -217,7 +238,7 @@ class _MusicianPageState extends State<MusicianPage> {
   }
 }
 
-/* ===================== UI ===================== */
+/* ===================== HEADER ===================== */
 
 class _InfoHeader extends StatelessWidget {
   final String instrument;
@@ -232,34 +253,67 @@ class _InfoHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    IconData statusIcon;
+    Color statusColor;
+
+    switch (status.toLowerCase()) {
+      case 'verbunden':
+        statusIcon = Icons.check_circle;
+        statusColor = Colors.greenAccent.shade400;
+        break;
+      case 'verbindung fehlgeschlagen':
+        statusIcon = Icons.error;
+        statusColor = Colors.redAccent.shade400;
+        break;
+      default:
+        statusIcon = Icons.sync;
+        statusColor = Colors.yellowAccent.shade700;
+    }
+
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
       decoration: const BoxDecoration(
-        gradient:
-            LinearGradient(colors: [Color(0xFF0D47A1), Color(0xFF1565C0)]),
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
+        gradient: LinearGradient(
+          colors: [Color(0xFF0D47A1), Color(0xFF1565C0)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(instrument,
-              style: const TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white)),
-          Text(voice,
-              style: const TextStyle(fontSize: 18, color: Colors.white70)),
-          const SizedBox(height: 12),
-          Text(status,
-              style: const TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.w600)),
+          Text(
+            instrument,
+            style: const TextStyle(
+                fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            voice,
+            style: const TextStyle(fontSize: 18, color: Colors.white70),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Icon(statusIcon, color: statusColor, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  status,
+                  style: const TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
 }
 
-/* ===================== MODELS ===================== */
+/* ===================== MODEL ===================== */
 
 class ReceivedPiece {
   final String name;
@@ -274,6 +328,8 @@ class ReceivedPiece {
     this.active = true,
   });
 }
+
+/* ===================== PDF VIEWER ===================== */
 
 class PdfViewerScreen extends StatelessWidget {
   final String filePath;

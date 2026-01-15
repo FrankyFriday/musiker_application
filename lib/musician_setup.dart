@@ -19,9 +19,11 @@ class _MusicianSetupPageState extends State<MusicianSetupPage> {
     'Saxophon',
     'Tuba',
     'Tenorhorn',
+    'Schlagzeug',
+    'Bariton',
   ];
 
-  final _voices = ['1. Stimme', '2. Stimme', '3. Stimme'];
+  final _voices = ['1. Stimme', '2. Stimme', '3. Stimme', '4. Stimme'];
 
   String? _selectedInstrument;
   String? _selectedVoice;
@@ -36,7 +38,6 @@ class _MusicianSetupPageState extends State<MusicianSetupPage> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _selectedInstrument = prefs.getString('instrument');
-
       final voiceNumber = prefs.getString('voice');
       if (voiceNumber != null) {
         _selectedVoice = _voices.firstWhere(
@@ -52,7 +53,7 @@ class _MusicianSetupPageState extends State<MusicianSetupPage> {
     if (_selectedInstrument != null) {
       await prefs.setString('instrument', _selectedInstrument!);
     }
-    await prefs.setString('voice', voiceNumber); // nur Zahl speichern
+    await prefs.setString('voice', voiceNumber);
   }
 
   void _openMusician() async {
@@ -63,7 +64,6 @@ class _MusicianSetupPageState extends State<MusicianSetupPage> {
       return;
     }
 
-    // Stimme nur als Zahl extrahieren
     final voiceNumber = _selectedVoice!.split('.').first;
     await _savePrefs(voiceNumber);
 
@@ -81,87 +81,115 @@ class _MusicianSetupPageState extends State<MusicianSetupPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final iconSize = screenWidth * 0.18; // Icon proportional
+    final cardPadding = screenWidth * 0.05;
 
     return Scaffold(
       body: Container(
+        width: screenWidth,
+        height: screenHeight,
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFF0D47A1), Color(0xFF1565C0)],
+            colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
           ),
         ),
         child: SafeArea(
-          bottom: false, // entfernt unteren Rand
-          child: MediaQuery.removePadding(
-            context: context,
-            removeBottom: true, // sicherstellen, dass ScrollView nicht unten gepaddet wird
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const SizedBox(height: 16),
-                  const Icon(Icons.music_note, size: 72, color: Colors.white),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Deine Einstellungen',
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.5,
+          bottom: false,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return SingleChildScrollView(
+                padding: EdgeInsets.symmetric(
+                    horizontal: cardPadding, vertical: screenHeight * 0.04),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: constraints.maxHeight - screenHeight * 0.08,
+                  ),
+                  child: IntrinsicHeight(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Center(
+                          child: Container(
+                            padding: EdgeInsets.all(screenWidth * 0.06),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(Icons.music_note,
+                                size: iconSize, color: Colors.white),
+                          ),
+                        ),
+                        SizedBox(height: screenHeight * 0.03),
+                        Text(
+                          'Deine Einstellungen',
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                            fontSize: screenWidth * 0.065,
+                          ),
+                        ),
+                        SizedBox(height: screenHeight * 0.05),
+                        // Instrument Card
+                        _SelectionCard(
+                          title: 'Instrument',
+                          subtitle: 'Wähle dein Instrument',
+                          icon: Icons.queue_music,
+                          child: _buildDropdown(
+                            value: _selectedInstrument,
+                            items: _instruments,
+                            onChanged: (v) =>
+                                setState(() => _selectedInstrument = v),
+                          ),
+                        ),
+                        SizedBox(height: screenHeight * 0.025),
+                        // Stimme Card
+                        _SelectionCard(
+                          title: 'Stimme',
+                          subtitle: 'Wähle deine Stimme',
+                          icon: Icons.record_voice_over,
+                          child: _buildDropdown(
+                            value: _selectedVoice,
+                            items: _voices,
+                            onChanged: (v) => setState(() => _selectedVoice = v),
+                          ),
+                        ),
+                        SizedBox(height: screenHeight * 0.05),
+                        ElevatedButton.icon(
+                          onPressed: _openMusician,
+                          icon: const Icon(Icons.arrow_forward,
+                              color: Colors.blueAccent),
+                          label: Text(
+                            'Weiter als Musiker',
+                            style: TextStyle(
+                              fontSize: screenWidth * 0.045,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blueAccent,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            padding: EdgeInsets.symmetric(
+                                vertical: screenHeight * 0.02),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(28),
+                            ),
+                            elevation: 6,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        const Spacer(),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 32),
-                  // Instrument Card
-                  _SelectionCard(
-                    title: 'Instrument',
-                    subtitle: 'Wähle dein Instrument',
-                    icon: Icons.queue_music,
-                    child: _buildDropdown(
-                      value: _selectedInstrument,
-                      items: _instruments,
-                      onChanged: (v) => setState(() => _selectedInstrument = v),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  // Stimme Card
-                  _SelectionCard(
-                    title: 'Stimme',
-                    subtitle: 'Wähle deine Stimme',
-                    icon: Icons.record_voice_over,
-                    child: _buildDropdown(
-                      value: _selectedVoice,
-                      items: _voices,
-                      onChanged: (v) => setState(() => _selectedVoice = v),
-                    ),
-                  ),
-                  const SizedBox(height: 40),
-                  ElevatedButton.icon(
-                    onPressed: _openMusician,
-                    icon: const Icon(Icons.arrow_forward, color: Colors.blueAccent),
-                    label: const Text(
-                      'Weiter als Musiker',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blueAccent,
-                      ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(28),
-                      ),
-                      elevation: 6,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-              ),
-            ),
+                ),
+              );
+            },
           ),
         ),
       ),
@@ -177,17 +205,18 @@ class _MusicianSetupPageState extends State<MusicianSetupPage> {
       value: value,
       hint: const Text('Bitte wählen', style: TextStyle(color: Colors.white70)),
       isExpanded: true,
-      dropdownColor: Colors.blue.shade700,
+      dropdownColor: Colors.blue.shade700.withOpacity(0.95),
       iconEnabledColor: Colors.white,
       style: const TextStyle(color: Colors.white, fontSize: 16),
       decoration: InputDecoration(
         filled: true,
-        fillColor: Colors.white.withOpacity(0.12),
+        fillColor: Colors.white.withOpacity(0.15),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       ),
       items: items
           .map(
@@ -217,40 +246,49 @@ class _SelectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+
     return Card(
-      color: Colors.white.withOpacity(0.12),
-      elevation: 6,
+      color: Colors.white.withOpacity(0.15),
+      elevation: 5,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  radius: 24,
-                  backgroundColor: Colors.white.withOpacity(0.2),
-                  child: Icon(icon, color: Colors.white),
-                ),
-                const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title,
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold)),
-                    Text(subtitle,
-                        style: const TextStyle(color: Colors.white70, fontSize: 13)),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            child,
-          ],
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        splashColor: Colors.white24,
+        onTap: () {},
+        child: Padding(
+          padding: EdgeInsets.all(screenWidth * 0.05),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: screenWidth * 0.08,
+                    backgroundColor: Colors.white.withOpacity(0.2),
+                    child: Icon(icon, color: Colors.white, size: screenWidth * 0.08),
+                  ),
+                  SizedBox(width: screenWidth * 0.04),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title,
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: screenWidth * 0.045,
+                              fontWeight: FontWeight.bold)),
+                      Text(subtitle,
+                          style: TextStyle(
+                              color: Colors.white70, fontSize: screenWidth * 0.032)),
+                    ],
+                  ),
+                ],
+              ),
+              SizedBox(height: screenHeight * 0.02),
+              child,
+            ],
+          ),
         ),
       ),
     );
