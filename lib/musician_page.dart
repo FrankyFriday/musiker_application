@@ -30,8 +30,6 @@ class _MusicianPageState extends State<MusicianPage> {
   String _status = 'Verbindung wird aufgebaut…';
   late final String _clientId;
 
-  bool _isConnecting = false;
-
   @override
   void initState() {
     super.initState();
@@ -46,47 +44,27 @@ class _MusicianPageState extends State<MusicianPage> {
   }
 
   Future<void> _connect() async {
-    if (_isConnecting) return;
-    _isConnecting = true;
-
     const domain = 'ws.notenserver.duckdns.org';
 
-    while (mounted) {
-      try {
-        final uri = Uri.parse('wss://$domain');
-        _channel = kIsWeb
-            ? WebSocketChannel.connect(uri)
-            : IOWebSocketChannel.connect(uri.toString());
+    try {
+      final uri = Uri.parse('wss://$domain');
+      _channel = kIsWeb
+          ? WebSocketChannel.connect(uri)
+          : IOWebSocketChannel.connect(uri.toString());
 
-        _channel!.sink.add(jsonEncode({
-          'type': 'register',
-          'clientId': _clientId,
-          'role': 'musician',
-          'instrument': widget.instrument,
-          'voice': widget.voice,
-        }));
+      _channel!.sink.add(jsonEncode({
+        'type': 'register',
+        'clientId': _clientId,
+        'role': 'musician',
+        'instrument': widget.instrument,
+        'voice': widget.voice,
+      }));
 
-        _channel!.stream.listen(
-          _handleMessage,
-          onDone: _reconnect,
-          onError: (_) => _reconnect(),
-        );
-
-        setState(() => _status = 'Verbunden');
-        _isConnecting = false;
-        return;
-      } catch (_) {
-        setState(() => _status = 'Verbindung fehlgeschlagen, versuche erneut…');
-        await Future.delayed(const Duration(seconds: 5));
-      }
+      _channel!.stream.listen(_handleMessage);
+      setState(() => _status = 'Verbunden');
+    } catch (_) {
+      setState(() => _status = 'Verbindung fehlgeschlagen');
     }
-  }
-
-  void _reconnect() {
-    if (!mounted) return;
-    setState(() => _status = 'Verbindung verloren, reconnect...');
-    _channel = null;
-    _connect();
   }
 
   Future<void> _handleMessage(dynamic message) async {
@@ -95,56 +73,66 @@ class _MusicianPageState extends State<MusicianPage> {
     switch (map['type']) {
       case 'ping':
         _channel?.sink.add(jsonEncode({'type': 'pong'}));
-        break;
+        return;
 
       case 'send_piece_signal':
         if (map['instrument'] != widget.instrument ||
             map['voice'] != widget.voice) return;
 
-        // PDF erneut empfangen, auch wenn schon beendet
-        final pdfName =
-            '${map['name']}_${widget.instrument}_${widget.voice}.pdf';
-
         try {
+          final pdfName =
+              '${map['name']}_${widget.instrument}_${widget.voice}.pdf';
+
           final file = await _nextcloudService.downloadPdf(pdfName);
 
-          final existing = _received.firstWhere(
-              (p) => p.name == map['name'],
-              orElse: () => ReceivedPiece(
-                  name: map['name'],
-                  path: file.path,
-                  receivedAt: DateTime.now()));
+          final piece = ReceivedPiece(
+            name: map['name'],
+            path: file.path,
+            receivedAt: DateTime.now(),
+            active: true,
+          );
 
-          existing.path = file.path;
-          existing.active = true;
+          // ALLE alten Instanzen des Stücks deaktivieren
+          _received.where((p) => p.name == map['name']).forEach((p) => p.active = false);
 
-          if (!_received.contains(existing)) _received.add(existing);
+          _received.add(piece);
 
           if (mounted) {
-            Navigator.of(context).push(MaterialPageRoute(
+            Navigator.of(context).push(
+              MaterialPageRoute(
                 builder: (_) =>
-                    PdfViewerScreen(filePath: existing.path, title: existing.name)));
+                    PdfViewerScreen(filePath: piece.path, title: piece.name),
+              ),
+            );
           }
 
-          _showSnackBar('Neue Noten: ${existing.name}');
+          _showSnackBar('Neue Noten: ${piece.name}');
           setState(() {});
         } catch (e) {
-          _showSnackBar('Fehler beim Laden der Noten: $e');
+          debugPrint('PDF-Download-Fehler: $e');
+          _showSnackBar('Fehler beim Laden der Noten');
         }
-
         break;
 
       case 'end_piece_signal':
-        for (var p in _received) {
-          if (p.name == map['name']) p.active = false;
+        final ended = _received.where((p) => p.name == map['name'] && p.active).toList();
 
-          // PDF Cache löschen
+        for (final p in ended) {
+          p.active = false;
+
+          // 🧹 Cache löschen
           final file = File(p.path);
-          if (await file.exists()) await file.delete();
+          if (await file.exists()) {
+            await file.delete();
+            debugPrint('🗑️ Cache gelöscht: ${file.path}');
+          }
         }
 
-        if (mounted && Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
+        // PDF schließen
+        if (mounted) {
+          while (Navigator.of(context).canPop()) {
+            Navigator.of(context).pop();
+          }
         }
 
         _showSnackBar('Stück beendet: ${map['name']}');
@@ -161,6 +149,7 @@ class _MusicianPageState extends State<MusicianPage> {
     if (!mounted) return;
     final messenger = ScaffoldMessenger.maybeOf(context);
     if (messenger == null) return;
+
     messenger.showSnackBar(SnackBar(content: Text(text)));
   }
 
@@ -200,16 +189,22 @@ class _MusicianPageState extends State<MusicianPage> {
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: ListTile(
-                          leading:
-                              const Icon(Icons.picture_as_pdf, color: Colors.red),
+                          leading: const Icon(Icons.picture_as_pdf,
+                              color: Colors.red),
                           title: Text(p.name,
-                              style: const TextStyle(fontWeight: FontWeight.bold)),
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold)),
                           subtitle: Text(
                               'Empfangen: ${p.receivedAt.toLocal().toString().split('.')[0]}'),
                           onTap: () {
-                            Navigator.of(context).push(MaterialPageRoute(
-                                builder: (_) =>
-                                    PdfViewerScreen(filePath: p.path, title: p.name)));
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => PdfViewerScreen(
+                                  filePath: p.path,
+                                  title: p.name,
+                                ),
+                              ),
+                            );
                           },
                         ),
                       );
@@ -223,6 +218,7 @@ class _MusicianPageState extends State<MusicianPage> {
 }
 
 /* ===================== UI ===================== */
+
 class _InfoHeader extends StatelessWidget {
   final String instrument;
   final String voice;
@@ -239,7 +235,8 @@ class _InfoHeader extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: const BoxDecoration(
-        gradient: LinearGradient(colors: [Color(0xFF0D47A1), Color(0xFF1565C0)]),
+        gradient:
+            LinearGradient(colors: [Color(0xFF0D47A1), Color(0xFF1565C0)]),
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
       ),
       child: Column(
@@ -247,7 +244,9 @@ class _InfoHeader extends StatelessWidget {
         children: [
           Text(instrument,
               style: const TextStyle(
-                  fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)),
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white)),
           Text(voice,
               style: const TextStyle(fontSize: 18, color: Colors.white70)),
           const SizedBox(height: 12),
@@ -261,9 +260,10 @@ class _InfoHeader extends StatelessWidget {
 }
 
 /* ===================== MODELS ===================== */
+
 class ReceivedPiece {
   final String name;
-  String path;
+  final String path;
   final DateTime receivedAt;
   bool active;
 
@@ -279,7 +279,11 @@ class PdfViewerScreen extends StatelessWidget {
   final String filePath;
   final String title;
 
-  const PdfViewerScreen({super.key, required this.filePath, required this.title});
+  const PdfViewerScreen({
+    super.key,
+    required this.filePath,
+    required this.title,
+  });
 
   @override
   Widget build(BuildContext context) {
