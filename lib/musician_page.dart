@@ -92,8 +92,9 @@ class _MusicianPageState extends State<MusicianPage> {
             active: true,
           );
 
-          // Alte Instanzen des Stücks deaktivieren
-          _received.where((p) => p.name == map['name']).forEach((p) => p.active = false);
+          _received
+              .where((p) => p.name == map['name'])
+              .forEach((p) => p.active = false);
 
           _received.add(piece);
 
@@ -115,20 +116,17 @@ class _MusicianPageState extends State<MusicianPage> {
         break;
 
       case 'end_piece_signal':
-        final ended = _received.where((p) => p.name == map['name'] && p.active).toList();
+        final ended =
+            _received.where((p) => p.name == map['name'] && p.active).toList();
 
         for (final p in ended) {
           p.active = false;
-
-          // 🧹 Cache löschen
           final file = File(p.path);
           if (await file.exists()) {
             await file.delete();
-            debugPrint('🗑️ Cache gelöscht: ${file.path}');
           }
         }
 
-        // PDF schließen
         if (mounted) {
           while (Navigator.of(context).canPop()) {
             Navigator.of(context).pop();
@@ -147,21 +145,13 @@ class _MusicianPageState extends State<MusicianPage> {
 
   void _showSnackBar(String text) {
     if (!mounted) return;
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    if (messenger == null) return;
-
-    messenger.showSnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.info_outline, color: Colors.white),
-            const SizedBox(width: 8),
-            Expanded(child: Text(text)),
-          ],
-        ),
-        backgroundColor: Colors.blueAccent.shade700,
+        content: Text(text),
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
       ),
     );
   }
@@ -171,11 +161,15 @@ class _MusicianPageState extends State<MusicianPage> {
     final active = _received.where((p) => p.active).toList();
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F6FA),
+      backgroundColor: const Color(0xFFF7F8FC),
       appBar: AppBar(
-        title: const Text('Marschpad – Musiker'),
-        backgroundColor: const Color(0xFF0D47A1),
+        elevation: 0,
+        backgroundColor: Colors.blue.shade900,
         foregroundColor: Colors.white,
+        title: const Text(
+          'Marschpad-Musiker',
+          style: TextStyle(fontWeight: FontWeight.w600),
+        ),
         centerTitle: true,
       ),
       body: Column(
@@ -187,48 +181,13 @@ class _MusicianPageState extends State<MusicianPage> {
           ),
           Expanded(
             child: active.isEmpty
-                ? const Center(
-                    child: Text(
-                      'Keine aktiven Noten',
-                      style: TextStyle(fontSize: 18, color: Colors.black54),
-                    ),
-                  )
+                ? const _EmptyState()
                 : ListView.builder(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(20),
                     itemCount: active.length,
                     itemBuilder: (_, i) {
                       final p = active[i];
-                      return Card(
-                        elevation: 4,
-                        shadowColor: Colors.black26,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        margin: const EdgeInsets.symmetric(vertical: 8),
-                        child: ListTile(
-                          leading: const Icon(Icons.picture_as_pdf, color: Colors.red),
-                          title: Text(
-                            p.name,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 16),
-                          ),
-                          subtitle: Text(
-                            'Empfangen: ${p.receivedAt.toLocal().toString().split('.')[0]}',
-                            style: const TextStyle(color: Colors.black54),
-                          ),
-                          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                          onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => PdfViewerScreen(
-                                  filePath: p.path,
-                                  title: p.name,
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      );
+                      return _PieceCard(piece: p);
                     },
                   ),
           ),
@@ -253,61 +212,155 @@ class _InfoHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    IconData statusIcon;
-    Color statusColor;
+    IconData icon;
+    Color color;
 
     switch (status.toLowerCase()) {
       case 'verbunden':
-        statusIcon = Icons.check_circle;
-        statusColor = Colors.greenAccent.shade400;
+        icon = Icons.wifi;
+        color = Colors.green;
         break;
       case 'verbindung fehlgeschlagen':
-        statusIcon = Icons.error;
-        statusColor = Colors.redAccent.shade400;
+        icon = Icons.wifi_off;
+        color = Colors.red;
         break;
       default:
-        statusIcon = Icons.sync;
-        statusColor = Colors.yellowAccent.shade700;
+        icon = Icons.sync;
+        color = Colors.orange;
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFF0D47A1), Color(0xFF1565C0)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            instrument,
-            style: const TextStyle(
-                fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            voice,
-            style: const TextStyle(fontSize: 18, color: Colors.white70),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Icon(statusIcon, color: statusColor, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  status,
-                  style: const TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.w600),
-                ),
-              ),
-            ],
+      margin: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black12,
+            blurRadius: 14,
+            offset: Offset(0, 6),
           ),
         ],
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 28),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  instrument,
+                  style: const TextStyle(
+                      fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  voice,
+                  style: const TextStyle(color: Colors.black54),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  status,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: color,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/* ===================== EMPTY STATE ===================== */
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: const [
+          Icon(Icons.music_off, size: 64, color: Colors.black38),
+          SizedBox(height: 16),
+          Text(
+            'Keine aktiven Noten',
+            style: TextStyle(fontSize: 18, color: Colors.black54),
+          ),
+          SizedBox(height: 6),
+          Text(
+            'Warte auf das nächste Stück',
+            style: TextStyle(color: Colors.black38),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/* ===================== PIECE CARD ===================== */
+
+class _PieceCard extends StatelessWidget {
+  final ReceivedPiece piece;
+
+  const _PieceCard({required this.piece});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black12,
+            blurRadius: 12,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: ListTile(
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        leading: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: Colors.red.shade50,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: const Icon(Icons.picture_as_pdf, color: Colors.red),
+        ),
+        title: Text(
+          piece.name,
+          style:
+              const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(
+            'Empfangen: ${piece.receivedAt.toLocal().toString().split('.')[0]}',
+            style: const TextStyle(fontSize: 13),
+          ),
+        ),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) =>
+                  PdfViewerScreen(filePath: piece.path, title: piece.name),
+            ),
+          );
+        },
       ),
     );
   }
