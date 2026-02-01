@@ -21,6 +21,7 @@ class _MusicianSetupPageState extends State<MusicianSetupPage> {
     'Tenorhorn',
     'Schlagzeug',
     'Bariton',
+    'Oboe',
   ];
 
   final _voices = ['1. Stimme', '2. Stimme', '3. Stimme', '4. Stimme'];

@@ -4,11 +4,13 @@ import 'package:package_info_plus/package_info_plus.dart';
 class SettingsPage extends StatefulWidget {
   final String instrument;
   final String voice;
+  final bool darkMode;
 
   const SettingsPage({
     super.key,
     required this.instrument,
     required this.voice,
+    this.darkMode = false,
   });
 
   @override
@@ -18,7 +20,7 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   late String _selectedInstrument;
   late String _selectedVoice;
-  bool _darkMode = false;
+  late bool _darkMode;
   String _appVersion = '';
 
   final List<String> _instruments = [
@@ -32,8 +34,8 @@ class _SettingsPageState extends State<SettingsPage> {
     'Tenorhorn',
     'Schlagzeug',
     'Bariton',
+    'Oboe',
   ];
-
   final List<String> _voices = ['1', '2', '3', '4'];
 
   @override
@@ -41,6 +43,7 @@ class _SettingsPageState extends State<SettingsPage> {
     super.initState();
     _selectedInstrument = widget.instrument;
     _selectedVoice = widget.voice;
+    _darkMode = widget.darkMode;
     _loadVersion();
   }
 
@@ -49,50 +52,45 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() => _appVersion = info.version);
   }
 
-  bool get _hasInstrumentOrVoiceChanged =>
+  bool get _hasChanges =>
       _selectedInstrument != widget.instrument ||
-      _selectedVoice != widget.voice;
+      _selectedVoice != widget.voice ||
+      _darkMode != widget.darkMode;
 
   Future<void> _onSavePressed() async {
-    if (_hasInstrumentOrVoiceChanged) {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Änderung bestätigen'),
-          content: Text(
-            'Möchtest du wirklich von\n\n'
-            '• ${widget.instrument} – Stimme ${widget.voice}\n\n'
-            'zu\n\n'
-            '• $_selectedInstrument – Stimme $_selectedVoice\n\n'
-            'wechseln?',
-          ),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Abbrechen'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blueGrey.shade900,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Ja, wechseln'),
-            ),
-          ],
-        ),
-      );
-
-      if (confirmed != true) return;
-    }
-
     Navigator.of(context).pop({
       'instrument': _selectedInstrument,
       'voice': _selectedVoice,
       'darkMode': _darkMode,
     });
+  }
+
+  Widget _buildDropdownCard({
+    required IconData icon,
+    required String title,
+    required String value,
+    required List<String> options,
+    required ValueChanged<String?> onChanged,
+  }) {
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: DropdownButtonFormField<String>(
+          value: value,
+          items: options
+              .map((o) => DropdownMenuItem(value: o, child: Text(o)))
+              .toList(),
+          onChanged: onChanged,
+          decoration: InputDecoration(
+            icon: Icon(icon, color: Colors.blueGrey),
+            labelText: title,
+            border: InputBorder.none,
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -107,64 +105,27 @@ class _SettingsPageState extends State<SettingsPage> {
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Instrument & Stimme',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Card(
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-              elevation: 2,
-              child: ListTile(
-                leading:
-                    const Icon(Icons.music_note, color: Colors.blueGrey),
-                title: const Text('Instrument'),
-                trailing: DropdownButton<String>(
-                  value: _selectedInstrument,
-                  items: _instruments
-                      .map((i) =>
-                          DropdownMenuItem(value: i, child: Text(i)))
-                      .toList(),
-                  onChanged: (val) {
-                    if (val != null) {
-                      setState(() => _selectedInstrument = val);
-                    }
-                  },
-                ),
-              ),
+            const SizedBox(height: 12),
+            _buildDropdownCard(
+              icon: Icons.music_note,
+              title: 'Instrument',
+              value: _selectedInstrument,
+              options: _instruments,
+              onChanged: (val) => setState(() => _selectedInstrument = val!),
             ),
             const SizedBox(height: 12),
-            Card(
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-              elevation: 2,
-              child: ListTile(
-                leading: const Icon(Icons.mic, color: Colors.blueGrey),
-                title: const Text('Stimme'),
-                trailing: DropdownButton<String>(
-                  value: _selectedVoice,
-                  items: _voices
-                      .map((v) =>
-                          DropdownMenuItem(value: v, child: Text(v)))
-                      .toList(),
-                  onChanged: (val) {
-                    if (val != null) {
-                      setState(() => _selectedVoice = val);
-                    }
-                  },
-                ),
-              ),
+            _buildDropdownCard(
+              icon: Icons.mic,
+              title: 'Stimme',
+              value: _selectedVoice,
+              options: _voices,
+              onChanged: (val) => setState(() => _selectedVoice = val!),
             ),
             const SizedBox(height: 24),
             Card(
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               elevation: 2,
               child: SwitchListTile(
                 title: const Text('Dunkles Theme'),
@@ -184,7 +145,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blueGrey.shade900,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
                   textStyle: const TextStyle(
                       fontSize: 16, fontWeight: FontWeight.bold),
                   shape: RoundedRectangleBorder(
@@ -196,10 +157,7 @@ class _SettingsPageState extends State<SettingsPage> {
             Center(
               child: Text(
                 _appVersion.isEmpty ? 'Version …' : 'Version $_appVersion',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey.shade600,
-                ),
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               ),
             ),
           ],
