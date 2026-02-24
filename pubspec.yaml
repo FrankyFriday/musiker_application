@@ -1,35 +1,39 @@
 name: marschpad
-description: Marschpad - Dirigent + Musiker Apps
+description: Marschpad – Dirigent + Musiker Apps
 publish_to: "none"
 version: 0.0.1+1
 
 environment:
-  sdk: ">=2.18.0 <4.0.0"
+  sdk: ">=3.2.0 <4.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
+
+  # Storage
   shared_preferences: ^2.5.4
-  flutter_dotenv: ^6.0.0
   path_provider: ^2.0.14
-  http: ^1.1.0
+
+  # Networking
+  http: ^1.2.0
   web_socket_channel: ^3.0.3
+
+  # Utilities
   uuid: ^4.1.0
-  syncfusion_flutter_pdfviewer: ^32.1.20
+  flutter_dotenv: ^6.0.0
   package_info_plus: ^4.0.0
+
+  # PDF
+  syncfusion_flutter_pdfviewer: ^32.1.20
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_launcher_icons: ^0.14.4 
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
 
   assets:
     - assets/.env
-
-flutter_icons:
-  android: true
-  ios: true
-  image_path: "assets/icon/app_icon.png" 
+    - assets/icon/app_icon.png
