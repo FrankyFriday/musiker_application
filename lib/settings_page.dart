@@ -78,7 +78,7 @@ class _SettingsPageState extends State<SettingsPage> {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: DropdownButtonFormField<String>(
-          value: value,
+          initialValue: value,
           items: options
               .map((o) => DropdownMenuItem(value: o, child: Text(o)))
               .toList(),

@@ -7,7 +7,13 @@ import 'package:uuid/uuid.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import '../config/app_config.dart';
+import '../models/update_info.dart';
 import '../services/nextcloud_service.dart';
+import '../services/version_checker.dart';
+import '../ui/update_dialog.dart';
+import '../utils/logger.dart';
 import 'offline_practice_page.dart';
 import 'settings_page.dart';
 
@@ -44,6 +50,7 @@ class _MusicianPageState extends State<MusicianPage> {
   late String _instrument;
   late String _voice;
   late bool _darkMode;
+  bool _updateDialogShown = false;
 
   @override
   void initState() {
@@ -79,6 +86,7 @@ class _MusicianPageState extends State<MusicianPage> {
         'type': 'register',
         'clientId': _clientId,
         'role': 'musician',
+        'app': AppConfig.appId,
         'instrument': _instrument,
         'voice': _voice,
       }));
@@ -134,6 +142,10 @@ class _MusicianPageState extends State<MusicianPage> {
         return;
 
       case 'pong':
+        return;
+
+      case 'release_announce':
+        await _handleReleaseAnnounce(map);
         return;
 
       case 'send_piece_signal':
@@ -193,6 +205,50 @@ class _MusicianPageState extends State<MusicianPage> {
 
       default:
         debugPrint('[WS] Unbekannter Nachrichtentyp: ${map['type']}');
+    }
+  }
+
+  Future<void> _handleReleaseAnnounce(Map<String, dynamic> message) async {
+    UpdateLogger.info('[UPDATE] release_announce empfangen');
+    if (message['app'] != AppConfig.appId) {
+      UpdateLogger.warning('[UPDATE] Falsche App-ID: ${message['app']}');
+      return;
+    }
+
+    final release = message['release'];
+    if (release is! Map) {
+      UpdateLogger.warning('[UPDATE] Release-Daten fehlen');
+      return;
+    }
+    final releaseMap = Map<String, dynamic>.from(release);
+    final serverVersion = releaseMap['version'] as String?;
+    final apkUrl = releaseMap['apkUrl'] as String?;
+    if (serverVersion == null || apkUrl == null) {
+      UpdateLogger.warning('[UPDATE] Version oder APK-URL fehlt');
+      return;
+    }
+
+    final currentVersion = (await PackageInfo.fromPlatform()).version;
+    if (!VersionChecker.isNewerVersion(currentVersion, serverVersion) ||
+        _updateDialogShown || !mounted) {
+      return;
+    }
+
+    _updateDialogShown = true;
+    try {
+      await showDialog<bool>(
+        context: context,
+        builder: (_) => UpdateDialog(
+          updateInfo: UpdateInfo(
+            version: serverVersion,
+            mandatory: false,
+            notes: 'Neues Release verfügbar.',
+            url: apkUrl,
+          ),
+        ),
+      );
+    } finally {
+      _updateDialogShown = false;
     }
   }
 
@@ -395,7 +451,7 @@ class _EmptyState extends StatelessWidget {
           const SizedBox(height: 16),
           Text('Keine aktiven Noten', style: TextStyle(fontSize: 18, color: color)),
           const SizedBox(height: 6),
-          Text('Warte auf das nächste Stück', style: TextStyle(color: color.withOpacity(0.7))),
+          Text('Warte auf das nächste Stück', style: TextStyle(color: color.withValues(alpha: 0.7))),
         ],
       ),
     );

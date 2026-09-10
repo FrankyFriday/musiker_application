@@ -1,30 +1,153 @@
 name: Android Release
 
 on:
+  workflow_dispatch:
   push:
     tags:
-      - 'v*.*.*'
+      - "v*"
 
 jobs:
-  build-release:
+  build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout source
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: '3.38.7'
+
+      - name: Cache Flutter Pub
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.pub-cache
+            .packages
+          key: ${{ runner.os }}-flutter-${{ hashFiles('**/pubspec.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-flutter-
 
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build release APK
-        run: flutter build apk --release
+      - name: Setup Keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          mkdir -p android/app
+          echo "$KEYSTORE_BASE64" | base64 --decode > android/app/musiker_key.jks
 
-      - name: Upload GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Create key.properties
+        run: |
+          cat <<EOF > android/app/key.properties
+          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          storeFile=musiker_key.jks
+          EOF
+
+      - name: Verify keystore alias
+        run: |
+          keytool -list \
+            -keystore android/app/musiker_key.jks \
+            -storepass "${{ secrets.KEYSTORE_PASSWORD }}"
+
+      - name: Determine next release number
+        id: next_release
+        env:
+          NC_USER: ${{ secrets.NC_USER }}
+          NC_PASS: ${{ secrets.NC_PASS }}
+        run: |
+          FILES_XML=$(curl -s -u "${NC_USER}:${NC_PASS}" \
+            -X PROPFIND \
+            "https://cloud.notenserver.duckdns.org/remote.php/dav/files/mwesterh/releases/")
+          VERSIONS=$(echo "$FILES_XML" | grep -oP 'musiker_application-\K(\d+\.\d+\.\d+)(?=\.apk)')
+          if [ -z "$VERSIONS" ]; then
+            NEXT="0.0.1"
+          else
+            LAST=$(echo "$VERSIONS" | sort -V | tail -n1)
+            MAJOR=$(echo "$LAST" | cut -d. -f1)
+            MINOR=$(echo "$LAST" | cut -d. -f2)
+            PATCH=$(echo "$LAST" | cut -d. -f3)
+            PATCH=$((PATCH+1))
+            NEXT="$MAJOR.$MINOR.$PATCH"
+          fi
+          echo "next_release=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "Next release version: $NEXT"
+
+      - name: Create .env
+        run: |
+          cat <<EOF > assets/.env
+          NEXTCLOUD_BASE_URL=https://cloud.notenserver.duckdns.org/remote.php/dav/files/mwesterh
+          NEXTCLOUD_USER=${{ secrets.NC_USER }}
+          NEXTCLOUD_PASSWORD=${{ secrets.NC_PASS }}
+          GITHUB_OWNER=FrankyFriday
+          GITHUB_MUSIKER_REPO=musiker_application
+          EOF
+
+      - name: Build APK (release)
+        run: |
+          flutter clean
+          flutter build apk --release \
+            --build-name=${{ steps.next_release.outputs.next_release }} \
+            --build-number=$(date +%s) \
+            --no-tree-shake-icons
+
+      - name: Verify APK version
+        env:
+          EXPECTED_VERSION: ${{ steps.next_release.outputs.next_release }}
+        run: |
+          APK_VERSION=$(aapt dump badging build/app/outputs/flutter-apk/app-release.apk \
+            | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")
+          test "$APK_VERSION" = "$EXPECTED_VERSION"
+
+      - name: Rename APK
+        run: |
+          mv build/app/outputs/flutter-apk/app-release.apk \
+            musiker_application-${{ steps.next_release.outputs.next_release }}.apk
+
+      - name: Ensure releases folder exists
+        env:
+          NC_USER: ${{ secrets.NC_USER }}
+          NC_PASS: ${{ secrets.NC_PASS }}
+        run: |
+          curl -u "${NC_USER}:${NC_PASS}" -X MKCOL \
+            "https://cloud.notenserver.duckdns.org/remote.php/dav/files/mwesterh/releases" || true
+
+      - name: Upload APK to Nextcloud
+        env:
+          NC_USER: ${{ secrets.NC_USER }}
+          NC_PASS: ${{ secrets.NC_PASS }}
+        run: |
+          curl -u "${NC_USER}:${NC_PASS}" -T \
+            musiker_application-${{ steps.next_release.outputs.next_release }}.apk \
+            "https://cloud.notenserver.duckdns.org/remote.php/dav/files/mwesterh/releases/musiker_application-${{ steps.next_release.outputs.next_release }}.apk"
+
+      - name: Install Octopus CLI
+        uses: OctopusDeploy/install-octopus-cli-action@v3
         with:
-          files: build/app/outputs/flutter-apk/app-release.apk
+          version: latest
+
+      - name: Create Octopus Release
+        env:
+          OCTOPUS_URL: https://franky.octopus.app
+          OCTOPUS_API_KEY: ${{ secrets.OCTOPUS_API_KEY }}
+          OCTOPUS_SPACE: ${{ secrets.OCTOPUS_SPACE }}
+        run: |
+          octopus release create \
+            --project "musiker_application" \
+            --version "${{ steps.next_release.outputs.next_release }}" \
+            --release-notes "APK Release"
+
+      - name: Deploy Release to Octopus
+        env:
+          OCTOPUS_URL: https://franky.octopus.app
+          OCTOPUS_API_KEY: ${{ secrets.OCTOPUS_API_KEY }}
+          OCTOPUS_SPACE: ${{ secrets.OCTOPUS_SPACE }}
+        run: |
+          octopus release deploy \
+            --project "musiker_application" \
+            --version "${{ steps.next_release.outputs.next_release }}" \
+            --environment "Production"

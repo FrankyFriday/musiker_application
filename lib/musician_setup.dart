@@ -117,7 +117,7 @@ class _MusicianSetupPageState extends State<MusicianSetupPage> {
                           child: Container(
                             padding: EdgeInsets.all(screenWidth * 0.06),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
+                              color: Colors.white.withValues(alpha: 0.2),
                               shape: BoxShape.circle,
                             ),
                             child: Icon(Icons.music_note,
@@ -206,12 +206,12 @@ class _MusicianSetupPageState extends State<MusicianSetupPage> {
       initialValue: value,
       hint: const Text('Bitte wählen', style: TextStyle(color: Colors.white70)),
       isExpanded: true,
-      dropdownColor: Colors.blue.shade700.withOpacity(0.95),
+      dropdownColor: Colors.blue.shade700.withValues(alpha: 0.95),
       iconEnabledColor: Colors.white,
       style: const TextStyle(color: Colors.white, fontSize: 16),
       decoration: InputDecoration(
         filled: true,
-        fillColor: Colors.white.withOpacity(0.15),
+        fillColor: Colors.white.withValues(alpha: 0.15),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,
@@ -251,7 +251,7 @@ class _SelectionCard extends StatelessWidget {
     final screenHeight = MediaQuery.of(context).size.height;
 
     return Card(
-      color: Colors.white.withOpacity(0.15),
+      color: Colors.white.withValues(alpha: 0.15),
       elevation: 5,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: InkWell(
@@ -267,7 +267,7 @@ class _SelectionCard extends StatelessWidget {
                 children: [
                   CircleAvatar(
                     radius: screenWidth * 0.08,
-                    backgroundColor: Colors.white.withOpacity(0.2),
+                    backgroundColor: Colors.white.withValues(alpha: 0.2),
                     child: Icon(icon, color: Colors.white, size: screenWidth * 0.08),
                   ),
                   SizedBox(width: screenWidth * 0.04),
