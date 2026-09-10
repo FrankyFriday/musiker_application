@@ -38,10 +38,12 @@ class MusicianPage extends StatefulWidget {
   State<MusicianPage> createState() => _MusicianPageState();
 }
 
-class _MusicianPageState extends State<MusicianPage> {
+class _MusicianPageState extends State<MusicianPage>
+  with WidgetsBindingObserver {
   final NextcloudService _nextcloudService = NextcloudService();
   WebSocketChannel? _channel;
   Timer? _pingTimer;
+  Timer? _reconnectTimer;
   final Duration _pingInterval = const Duration(seconds: 10);
 
   final List<ReceivedPiece> _received = [];
@@ -51,10 +53,12 @@ class _MusicianPageState extends State<MusicianPage> {
   late String _voice;
   late bool _darkMode;
   bool _updateDialogShown = false;
+  bool _connecting = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _instrument = widget.instrument;
     _voice = widget.voice;
     _darkMode = widget.darkMode;
@@ -64,25 +68,47 @@ class _MusicianPageState extends State<MusicianPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pingTimer?.cancel();
+    _reconnectTimer?.cancel();
     _channel?.sink.close();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _reconnectIfNeeded();
+    }
+  }
+
+  void _reconnectIfNeeded() {
+    if (!mounted || _connecting || _channel != null) return;
+    _connect();
+  }
+
+  void _scheduleReconnect() {
+    if (!mounted || _reconnectTimer?.isActive == true) return;
+    _reconnectTimer = Timer(const Duration(seconds: 2), _reconnectIfNeeded);
   }
 
   // =========================
   // WEBSOCKET CONNECT
   // =========================
   Future<void> _connect() async {
+    if (_connecting || !mounted) return;
+    _connecting = true;
     _channel?.sink.close();
     const domain = 'ws.notenserver.duckdns.org';
 
     try {
       final uri = Uri.parse('wss://$domain');
-      _channel = kIsWeb
+      final channel = kIsWeb
           ? WebSocketChannel.connect(uri)
           : IOWebSocketChannel.connect(uri.toString());
+      _channel = channel;
 
-      _channel!.sink.add(jsonEncode({
+      channel.sink.add(jsonEncode({
         'type': 'register',
         'clientId': _clientId,
         'role': 'musician',
@@ -91,17 +117,23 @@ class _MusicianPageState extends State<MusicianPage> {
         'voice': _voice,
       }));
 
-      _channel!.stream.listen(
+      channel.stream.listen(
         _handleMessage,
         onDone: _onDisconnected,
         onError: _onError,
       );
 
+      if (!mounted) return;
       setState(() => _status = 'Verbunden');
       _startPing();
     } catch (e) {
+      _channel = null;
+      if (!mounted) return;
       setState(() => _status = 'Verbindung fehlgeschlagen');
       debugPrint('WebSocket-Verbindungsfehler: $e');
+      _scheduleReconnect();
+    } finally {
+      _connecting = false;
     }
   }
 
@@ -121,13 +153,19 @@ class _MusicianPageState extends State<MusicianPage> {
   void _onDisconnected() {
     debugPrint('[WS] Verbindung getrennt');
     _pingTimer?.cancel();
+    _channel = null;
+    if (!mounted) return;
     setState(() => _status = 'Getrennt');
+    _scheduleReconnect();
   }
 
   void _onError(dynamic e) {
     debugPrint('[WS] Fehler: $e');
     _pingTimer?.cancel();
+    _channel = null;
+    if (!mounted) return;
     setState(() => _status = 'Fehler');
+    _scheduleReconnect();
   }
 
   // =========================
@@ -146,6 +184,14 @@ class _MusicianPageState extends State<MusicianPage> {
 
       case 'release_announce':
         await _handleReleaseAnnounce(map);
+        return;
+
+      case 'maintenance_status':
+        final enabled = map['enabled'] == true;
+        UpdateLogger.info('[WS] Wartungsmodus: $enabled');
+        if (mounted && enabled) {
+          _showSnackBar('Server-Wartungsmodus ist aktiv.');
+        }
         return;
 
       case 'send_piece_signal':
@@ -175,7 +221,7 @@ class _MusicianPageState extends State<MusicianPage> {
           }
 
           _showSnackBar('Neue Noten: ${piece.name}');
-          setState(() {});
+          if (mounted) setState(() {});
         } catch (e) {
           debugPrint('PDF-Download-Fehler: $e');
           _showSnackBar('Fehler beim Laden der Noten');
@@ -196,11 +242,11 @@ class _MusicianPageState extends State<MusicianPage> {
         }
 
         _showSnackBar('Stück beendet: ${map['name']}');
-        setState(() {});
+        if (mounted) setState(() {});
         break;
 
       case 'status':
-        setState(() => _status = map['text']);
+        if (mounted) setState(() => _status = map['text']);
         break;
 
       default:
@@ -473,7 +519,10 @@ class _PieceCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 12, offset: Offset(0, 6))],
       ),
-      child: ListTile(
+      child: Material(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(20),
+        child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         leading: Container(
           width: 48,
@@ -491,6 +540,7 @@ class _PieceCard extends StatelessWidget {
         trailing: Icon(Icons.chevron_right, color: darkMode ? Colors.white70 : Colors.black45),
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => PdfViewerScreen(filePath: piece.path, title: piece.name, darkMode: darkMode)),
+        ),
         ),
       ),
     );

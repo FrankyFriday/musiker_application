@@ -151,7 +151,10 @@ class _PieceCard extends StatelessWidget {
           BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 3)),
         ],
       ),
-      child: ListTile(
+      child: Material(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(16),
+        child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         leading: Container(
           width: 48,
@@ -176,6 +179,7 @@ class _PieceCard extends StatelessWidget {
           MaterialPageRoute(
             builder: (_) => PdfViewerScreen(filePath: piece.path, title: piece.name),
           ),
+        ),
         ),
       ),
     );
