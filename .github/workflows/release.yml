@@ -60,9 +60,27 @@ jobs:
           NC_USER: ${{ secrets.NC_USER }}
           NC_PASS: ${{ secrets.NC_PASS }}
         run: |
-          FILES_XML=$(curl -s -u "${NC_USER}:${NC_PASS}" \
-            -X PROPFIND \
+          set +e   # curl-Fehler selbst behandeln statt das Skript sofort sterben zu lassen
+          HTTP_STATUS=$(curl -sS -o /tmp/files.xml -w "%{http_code}" \
+            -u "${NC_USER}:${NC_PASS}" \
+            -X PROPFIND -H "Depth: 1" \
             "https://cloud.notenserver.duckdns.org/remote.php/dav/files/mwesterh/releases/")
+          CURL_EXIT=$?
+          set -e
+
+          echo "curl exit code: $CURL_EXIT, HTTP status: $HTTP_STATUS"
+
+          if [ "$CURL_EXIT" -ne 0 ]; then
+            echo "::error::curl konnte den Nextcloud-Server nicht erreichen (exit $CURL_EXIT)."
+            exit 1
+          fi
+          if [ "$HTTP_STATUS" -ge 400 ]; then
+            echo "::error::Nextcloud antwortete mit HTTP $HTTP_STATUS"
+            cat /tmp/files.xml
+            exit 1
+          fi
+
+          FILES_XML=$(cat /tmp/files.xml)
           VERSIONS=$(echo "$FILES_XML" | grep -oP 'musiker_application-\K(\d+\.\d+\.\d+)(?=\.apk)')
           if [ -z "$VERSIONS" ]; then
             NEXT="0.0.1"
