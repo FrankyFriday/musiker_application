@@ -39,7 +39,7 @@ jobs:
       # ================= INSTALL DEPENDENCIES =================
       - name: Install dependencies
         run: |
-          flutter pub get
+          flutter pub get -v
 
 
       # ================= KEYSTORE =================
@@ -134,7 +134,7 @@ jobs:
 
           flutter clean
 
-          flutter pub get
+          flutter pub get -v
 
           flutter build apk --release \
             --build-name="$VERSION" \
@@ -198,7 +198,6 @@ jobs:
       # ================= RENAME APK =================
       - name: Rename APK
         run: |
-
           VERSION="${{ steps.next_release.outputs.next_release }}"
 
           mv \
