@@ -14,55 +14,93 @@ class UpdateDialog extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final progress = ref.watch(downloadProgressProvider);
-    final downloading = progress > 0 && progress < 1;
+    final downloading = ref.watch(downloadInProgressProvider);
     return AlertDialog(
       title: const Text('Update verfügbar'),
-      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Neue Version: ${updateInfo.version}'),
-        const SizedBox(height: 8),
-        Text('Änderungen: ${updateInfo.notes}'),
-        if (downloading) ...[
-          const SizedBox(height: 16),
-          const Text('Herunterladen...'),
-          const SizedBox(height: 8),
-          LinearProgressIndicator(value: progress),
-          Text('${(progress * 100).toStringAsFixed(1)}%'),
-        ],
-      ]),
+      content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Neue Version: ${updateInfo.version}'),
+            const SizedBox(height: 8),
+            Text('Änderungen: ${updateInfo.notes}'),
+            if (updateInfo.mandatory) ...[
+              const SizedBox(height: 8),
+              const Text(
+                'Dieses Update ist erforderlich.',
+                style:
+                    TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+              ),
+            ],
+            if (downloading) ...[
+              const SizedBox(height: 16),
+              const Text('Herunterladen...'),
+              const SizedBox(height: 8),
+              LinearProgressIndicator(value: progress),
+              Text('${(progress * 100).toStringAsFixed(1)}%'),
+            ],
+          ]),
       actions: [
-        if (!updateInfo.mandatory) TextButton(onPressed: () => Navigator.pop(context), child: const Text('Später')),
-        ElevatedButton(onPressed: downloading ? null : () => _download(context, ref), child: Text(downloading ? 'Lädt...' : 'Herunterladen')),
+        if (!updateInfo.mandatory && !downloading)
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Später')),
+        ElevatedButton(
+            onPressed: downloading ? null : () => _download(context, ref),
+            child: Text(downloading ? 'Lädt...' : 'Herunterladen')),
       ],
     );
   }
 
   Future<void> _download(BuildContext context, WidgetRef ref) async {
+    if (ref.read(downloadInProgressProvider)) return;
+
+    final downloadingNotifier = ref.read(downloadInProgressProvider.notifier);
+    final progressNotifier = ref.read(downloadProgressProvider.notifier);
+    downloadingNotifier.state = true;
     final controller = StreamController<double>();
-    final notifier = ref.read(downloadProgressProvider.notifier);
-    final subscription = controller.stream.listen(notifier.updateProgress);
+    final subscription = controller.stream.listen(
+      progressNotifier.updateProgress,
+      onError: (Object error, StackTrace stackTrace) {
+        UpdateLogger.error('Download-Fortschritt konnte nicht gelesen werden',
+            error, stackTrace);
+      },
+    );
     try {
-      final path = await UpdateService.retry(
-        () => ref.read(updateServiceProvider).downloadUpdate(updateInfo, controller),
-        3, const Duration(seconds: 2));
+      final path = await UpdateService.retry(() async {
+        final downloadedPath = await ref
+            .read(updateServiceProvider)
+            .downloadUpdate(updateInfo, controller);
+        if (downloadedPath == null) {
+          throw StateError(
+              'Update konnte nicht heruntergeladen oder verifiziert werden.');
+        }
+        return downloadedPath;
+      }, 3, const Duration(seconds: 2));
       if (!context.mounted) return;
-      if (path == null) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Download fehlgeschlagen')));
-        return;
-      }
       final result = await OpenFilex.open(path);
+      if (!context.mounted) return;
       if (result.type != ResultType.done) {
-        UpdateLogger.error('Installer konnte nicht geöffnet werden: ${result.message}');
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Installer konnte nicht geöffnet werden: ${result.message}')));
+        UpdateLogger.error(
+            'Installer konnte nicht geöffnet werden: ${result.message}');
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(
+                'Installer konnte nicht geöffnet werden: ${result.message}')));
         return;
       }
       Navigator.pop(context, true);
     } catch (error, stackTrace) {
-      UpdateLogger.error('Fehler beim Öffnen des Installers', error, stackTrace);
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $error')));
+      UpdateLogger.error(
+          'Fehler beim Öffnen des Installers', error, stackTrace);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Fehler: $error')));
+      }
     } finally {
       await subscription.cancel();
       await controller.close();
-      notifier.reset();
+      progressNotifier.reset();
+      downloadingNotifier.state = false;
     }
   }
 }

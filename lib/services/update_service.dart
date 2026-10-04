@@ -9,18 +9,22 @@ class UpdateService {
   final DownloadService _downloadService;
   UpdateService(this._downloadService);
 
-  Future<String?> downloadUpdate(UpdateInfo info, StreamController<double> progress) async {
-    UpdateLogger.info('Update angefordert: ${info.version} (${info.url})');
+  Future<String?> downloadUpdate(
+      UpdateInfo info, StreamController<double> progress) async {
+    UpdateLogger.info('Update angefordert: ${info.version}');
     try {
       final path = await _downloadService.downloadFile(
-        info.url, DownloadService.generateFileName(info.version), progress);
+          info.url, DownloadService.generateFileName(info.version), progress);
       if (path == null || !await File(path).exists()) return null;
       final installed = await SignatureService.getInstalledSignature();
       final apk = await SignatureService.getApkSignature(path);
-      if (apk == null || apk['packageName'] != 'com.example.musiker_application' ||
-          apk['versionName'] != info.version || installed == null ||
+      if (apk == null ||
+          apk['packageName'] != 'com.example.musiker_application' ||
+          apk['versionName'] != info.version ||
+          installed == null ||
           apk['signature'] != installed) {
-        UpdateLogger.error('APK-Prüfung fehlgeschlagen: Package, Version oder Signatur stimmt nicht.');
+        UpdateLogger.error(
+            'APK-Prüfung fehlgeschlagen: Package, Version oder Signatur stimmt nicht.');
         return null;
       }
       UpdateLogger.info('APK-Prüfung erfolgreich: $path');
@@ -31,8 +35,9 @@ class UpdateService {
     }
   }
 
-  static Future<T> retry<T>(Future<T> Function() operation, int maxRetries, Duration delay) async {
-    for (var attempt = 0; ; attempt++) {
+  static Future<T> retry<T>(
+      Future<T> Function() operation, int maxRetries, Duration delay) async {
+    for (var attempt = 0;; attempt++) {
       try {
         return await operation();
       } catch (_) {

@@ -12,29 +12,74 @@ class DownloadService {
   DownloadService(this._dio);
 
   Uri _resolveUri(String value) {
-    final parsed = Uri.tryParse(value.trim());
-    if (parsed == null || parsed.toString().isEmpty) throw FormatException('Ungültige Download-URL.');
-    if (parsed.hasScheme) return parsed;
-    final base = Uri.tryParse(dotenv.env['NEXTCLOUD_BASE_URL'] ?? '');
-    if (base == null || !base.hasAuthority) throw StateError('NEXTCLOUD_BASE_URL ist ungültig.');
-    return base.resolve(value);
+    final raw = value.trim();
+    final parsed = Uri.tryParse(raw);
+    if (parsed == null || raw.isEmpty) {
+      throw const FormatException('Ungültige Download-URL.');
+    }
+    if (parsed.hasScheme) {
+      if (!parsed.hasAuthority ||
+          (parsed.scheme != 'http' && parsed.scheme != 'https')) {
+        throw FormatException('Ungültige Download-URL: $value');
+      }
+      return parsed;
+    }
+
+    final baseValue = dotenv.env['NEXTCLOUD_BASE_URL']?.trim() ?? '';
+    final base = Uri.tryParse(baseValue);
+    if (base == null ||
+        !base.hasAuthority ||
+        (base.scheme != 'http' && base.scheme != 'https')) {
+      throw StateError('NEXTCLOUD_BASE_URL ist ungültig.');
+    }
+    final resolved = raw.startsWith('/')
+        ? base.replace(
+            path: parsed.path, query: parsed.query, fragment: parsed.fragment)
+        : base.resolve(raw);
+    if (!resolved.hasAuthority ||
+        (resolved.scheme != 'http' && resolved.scheme != 'https')) {
+      throw FormatException('Ungültige Download-URL: $value');
+    }
+    return resolved;
   }
 
-  Future<String?> downloadFile(String url, String fileName, StreamController<double> progress) async {
+  String _safeUri(Uri uri) => uri.origin;
+
+  Future<String?> downloadFile(
+      String url, String fileName, StreamController<double> progress) async {
     try {
-      final directory = await getExternalStorageDirectory() ?? await getApplicationDocumentsDirectory();
+      final directory = await getExternalStorageDirectory() ??
+          await getApplicationDocumentsDirectory();
       await directory.create(recursive: true);
       final path = '${directory.path}/$fileName';
-      final user = dotenv.env['NEXTCLOUD_USER'] ?? '';
-      final password = dotenv.env['NEXTCLOUD_PASSWORD'] ?? '';
-      if (user.isEmpty || password.isEmpty) throw StateError('Nextcloud-Zugangsdaten fehlen.');
-      final auth = base64Encode(utf8.encode('$user:$password'));
-      UpdateLogger.info('APK-Download gestartet: ${_resolveUri(url).replace(userInfo: '')}');
-      await _dio.download(_resolveUri(url).toString(), path,
-          options: Options(headers: {'Authorization': 'Basic $auth'}),
+      final downloadUri = _resolveUri(url);
+      final user =
+          (dotenv.env['NC_USER'] ?? dotenv.env['NEXTCLOUD_USER'] ?? '').trim();
+      final password =
+          dotenv.env['NC_PASS'] ?? dotenv.env['NEXTCLOUD_PASSWORD'] ?? '';
+      if (user.isEmpty != password.isEmpty) {
+        throw StateError(
+            'Nextcloud-Benutzername und Passwort müssen gemeinsam gesetzt sein.');
+      }
+
+      final headers = <String, String>{'Accept': '*/*'};
+      final baseUri =
+          Uri.tryParse(dotenv.env['NEXTCLOUD_BASE_URL']?.trim() ?? '');
+      if (user.isNotEmpty &&
+          baseUri != null &&
+          baseUri.hasAuthority &&
+          (baseUri.scheme == 'http' || baseUri.scheme == 'https') &&
+          baseUri.origin == downloadUri.origin) {
+        headers[HttpHeaders.authorizationHeader] =
+            'Basic ${base64Encode(utf8.encode('$user:$password'))}';
+      }
+
+      UpdateLogger.info('APK-Download gestartet: ${_safeUri(downloadUri)}');
+      await _dio.download(downloadUri.toString(), path,
+          options: Options(headers: headers),
           onReceiveProgress: (received, total) {
-            if (total > 0) progress.add(received / total);
-          });
+        if (total > 0) progress.add(received / total);
+      });
       final file = await File(path).stat();
       if (file.size == 0) throw StateError('APK ist leer.');
       progress.add(1);

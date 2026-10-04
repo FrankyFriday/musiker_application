@@ -11,6 +11,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../config/app_config.dart';
 import '../models/update_info.dart';
 import '../services/nextcloud_service.dart';
+import '../services/notification_service.dart';
 import '../services/version_checker.dart';
 import '../ui/update_dialog.dart';
 import '../utils/logger.dart';
@@ -256,7 +257,7 @@ class _MusicianPageState extends State<MusicianPage>
 
   Future<void> _handleReleaseAnnounce(Map<String, dynamic> message) async {
     UpdateLogger.info('[UPDATE] release_announce empfangen');
-    if (message['app'] != AppConfig.appId) {
+    if (!AppConfig.matchesServerAppId(message['app'])) {
       UpdateLogger.warning('[UPDATE] Falsche App-ID: ${message['app']}');
       return;
     }
@@ -281,6 +282,8 @@ class _MusicianPageState extends State<MusicianPage>
     }
 
     _updateDialogShown = true;
+    await notificationService.showUpdateAvailable(serverVersion);
+    if (!mounted) return;
     try {
       await showDialog<bool>(
         context: context,
