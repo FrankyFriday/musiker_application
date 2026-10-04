@@ -20,7 +20,7 @@ class MainActivity : FlutterActivity() {
 							if (call.method == "openWifiSettings") {
 								Settings.ACTION_WIFI_SETTINGS
 							} else {
-								Settings.ACTION_TETHER_SETTINGS
+								"android.settings.TETHER_SETTINGS"
 							}
 						)
 						if (intent.resolveActivity(packageManager) == null) {
