@@ -82,6 +82,7 @@ class _MusicianPageState extends State<MusicianPage>
     if (!mounted || !(prefs.getBool('offlineBackupEnabled') ?? false)) return;
     setState(() => _offlineFallbackEnabled = true);
     await _startLocalDiscovery();
+    await _syncOfflineScores();
   }
 
   Future<void> _toggleOfflineFallback() async {
@@ -98,6 +99,7 @@ class _MusicianPageState extends State<MusicianPage>
           'Hotspot des Dirigenten.',
         );
       }
+      unawaited(_syncOfflineScores(showFeedback: true));
 
       return;
     }
@@ -442,7 +444,11 @@ class _MusicianPageState extends State<MusicianPage>
           if (mounted) setState(() {});
         } catch (e) {
           debugPrint('PDF-Download-Fehler: $e');
-          _showSnackBar('Fehler beim Laden der Noten');
+          _showSnackBar(
+            'Noten für ${map['name']} ($_instrument, Stimme $_voice) '
+            'konnten nicht geladen werden. Synchronisiere die Offline-Noten '
+            'und prüfe den Dateinamen auf dem Notenserver.',
+          );
         }
         break;
 
@@ -707,6 +713,38 @@ class _MusicianPageState extends State<MusicianPage>
       'darkMode': darkMode,
     });
     if (changedConnection) _connect();
+    if (changedConnection && _offlineFallbackEnabled) {
+      await _syncOfflineScores();
+    }
+  }
+
+  Future<void> _syncOfflineScores({bool showFeedback = false}) async {
+    try {
+      final files = await _nextcloudService.listAndDownloadPdfs(
+        _instrument,
+        _voice,
+      );
+      if (!showFeedback || !mounted) return;
+      if (files.isEmpty) {
+        _showSnackBar(
+          'Keine Noten für $_instrument, Stimme $_voice auf dem Notenserver. '
+          'Die Dateinamen müssen auf _${_instrument}_$_voice.pdf enden.',
+        );
+      } else {
+        _showSnackBar(
+          '${files.length} passende Noten für $_instrument, Stimme $_voice '
+          'sind offline verfügbar.',
+        );
+      }
+    } catch (error) {
+      debugPrint('Offline-Noten konnten nicht synchronisiert werden: $error');
+      if (showFeedback && mounted) {
+        _showSnackBar(
+          'Noten konnten nicht synchronisiert werden. Verbinde dich mit dem '
+          'Notenserver und versuche es erneut.',
+        );
+      }
+    }
   }
 }
 

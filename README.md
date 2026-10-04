@@ -43,9 +43,14 @@ Probenserver automatisch, wechselt bei einem Ausfall der Internetverbindung
 zu ihm und meldet den Wechsel. Sobald die Internetverbindung zurückkehrt,
 schaltet sie automatisch zum Notenserver zurück.
 
-Vor der Probe müssen die benötigten PDFs unter **Offline-Noten →
-Synchronisieren** heruntergeladen werden. Beim Offlinebetrieb kann die App
-keine neuen Dateien aus Nextcloud abrufen. Der Dirigent muss den
+Beim Einschalten von **Automatisch lokal verbinden** lädt die App die auf dem
+Notenserver vorhandenen PDFs für das ausgewählte Instrument und die Stimme
+herunter. Der Download lässt sich auch unter **Offline-Noten → Synchronisieren**
+manuell starten. Die Dateinamen müssen auf
+`_<Instrument>_<Stimmennummer>.pdf` enden; nicht jede Stimme ist für jedes
+Instrument und jedes Stück hinterlegt. Die Offline-Noten-Seite zeigt an, wenn
+keine passenden Dateien auf dem Server gefunden werden. Beim Offlinebetrieb
+kann die App keine neuen Dateien abrufen. Der Dirigent muss den
 Offline-Fallback ebenfalls einschalten; beide Apps müssen während der Probe
 geöffnet und im selben WLAN sein.
 Die lokale Sitzung verwendet WebSocket über TCP-Port `8765` und automatische

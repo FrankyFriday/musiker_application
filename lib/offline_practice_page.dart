@@ -197,7 +197,7 @@ class _OfflinePracticePageState extends State<OfflinePracticePage> {
                                         ? 'Noch keine Offline-Noten'
                                         : 'Keine Treffer',
                                     message: _pieces.isEmpty
-                                        ? 'Verbinde dich mit dem Server, um die Noten für dein Pult herunterzuladen.'
+                                        ? 'Keine PDFs für ${widget.instrument}, Stimme ${widget.voice} gefunden. Die Noten müssen auf _${widget.instrument}_${widget.voice}.pdf enden. Prüfe die Instrument- und Stimmenauswahl sowie die Dateien auf dem Notenserver.'
                                         : 'Mit diesem Suchbegriff wurde kein Stück gefunden.',
                                     actionLabel: _pieces.isEmpty
                                         ? 'Synchronisieren'
