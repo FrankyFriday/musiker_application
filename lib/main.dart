@@ -3,6 +3,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'musician_setup.dart';
 import 'services/notification_service.dart';
+import 'theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,13 +24,9 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Marschpad - Musikverein Scharrel',
-      theme: ThemeData(
-        useMaterial3: true,
-        fontFamily: 'Roboto',
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blue.shade700,
-        ),
-      ),
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: ThemeMode.system,
       home: const SplashLanding(),
     );
   }
@@ -116,8 +113,8 @@ class _SplashScreenState extends State<SplashScreen>
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Color(0xFF0D47A1),
-              Color(0xFF0A2E6E),
+              AppTheme.midnight,
+              Color(0xFF0B5961),
             ],
           ),
         ),
@@ -134,12 +131,13 @@ class _SplashScreenState extends State<SplashScreen>
                     padding: const EdgeInsets.all(28),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.white.withValues(alpha: 0.12),
+                      color: Colors.white.withValues(alpha: 0.10),
+                      border: Border.all(color: Colors.white24),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.35),
-                          blurRadius: 25,
-                          offset: const Offset(0, 10),
+                          color: AppTheme.teal.withValues(alpha: 0.35),
+                          blurRadius: 40,
+                          spreadRadius: 4,
                         ),
                       ],
                     ),
@@ -155,10 +153,10 @@ class _SplashScreenState extends State<SplashScreen>
                   const Text(
                     'Marschpad',
                     style: TextStyle(
-                      fontSize: 34,
-                      fontWeight: FontWeight.bold,
+                      fontSize: 36,
+                      fontWeight: FontWeight.w800,
                       color: Colors.white,
-                      letterSpacing: 2,
+                      letterSpacing: 1.2,
                     ),
                   ),
 
@@ -167,19 +165,19 @@ class _SplashScreenState extends State<SplashScreen>
                   Text(
                     'Musikverein Scharrel',
                     style: TextStyle(
-                      fontSize: 16,
+                      fontSize: 15,
                       color: Colors.white.withValues(alpha: 0.75),
-                      letterSpacing: 1.4,
+                      letterSpacing: 1.1,
                     ),
                   ),
 
-                  const SizedBox(height: 40),
+                  const SizedBox(height: 32),
 
                   const SizedBox(
-                    width: 36,
-                    height: 36,
+                    width: 30,
+                    height: 30,
                     child: CircularProgressIndicator(
-                      strokeWidth: 3,
+                      strokeWidth: 2.5,
                       valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                     ),
                   ),

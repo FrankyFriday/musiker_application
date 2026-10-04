@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import 'musician_page.dart';
+import 'theme/app_theme.dart';
 
 class MusicianSetupPage extends StatefulWidget {
   const MusicianSetupPage({super.key});
@@ -10,7 +12,7 @@ class MusicianSetupPage extends StatefulWidget {
 }
 
 class _MusicianSetupPageState extends State<MusicianSetupPage> {
-  final _instruments = [
+  static const _instruments = [
     'Flöte',
     'Klarinette',
     'Trompete',
@@ -24,10 +26,12 @@ class _MusicianSetupPageState extends State<MusicianSetupPage> {
     'Oboe',
   ];
 
-  final _voices = ['1. Stimme', '2. Stimme', '3. Stimme', '4. Stimme'];
+  static const _voices = ['1. Stimme', '2. Stimme', '3. Stimme', '4. Stimme'];
 
   String? _selectedInstrument;
   String? _selectedVoice;
+  bool _darkMode = false;
+  bool _loading = true;
 
   @override
   void initState() {
@@ -37,43 +41,43 @@ class _MusicianSetupPageState extends State<MusicianSetupPage> {
 
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+
+    final voiceNumber = prefs.getString('voice');
     setState(() {
       _selectedInstrument = prefs.getString('instrument');
-      final voiceNumber = prefs.getString('voice');
-      if (voiceNumber != null) {
-        _selectedVoice = _voices.firstWhere(
-          (v) => v.startsWith(voiceNumber),
-          orElse: () => "",
-        );
-      }
+      final savedVoice = _voices.firstWhere(
+        (voice) => voice.startsWith('${voiceNumber ?? ''}.'),
+        orElse: () => '',
+      );
+      _selectedVoice = savedVoice.isEmpty ? null : savedVoice;
+      _darkMode = prefs.getBool('darkMode') ?? false;
+      _loading = false;
     });
   }
 
-  Future<void> _savePrefs(String voiceNumber) async {
-    final prefs = await SharedPreferences.getInstance();
-    if (_selectedInstrument != null) {
-      await prefs.setString('instrument', _selectedInstrument!);
-    }
-    await prefs.setString('voice', voiceNumber);
-  }
-
-  void _openMusician() async {
-    if (_selectedInstrument == null || _selectedVoice == null) {
+  Future<void> _openMusician() async {
+    final instrument = _selectedInstrument;
+    final voice = _selectedVoice;
+    if (instrument == null || voice == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bitte Instrument und Stimme wählen.')),
+        const SnackBar(content: Text('Bitte Instrument und Stimme auswählen.')),
       );
       return;
     }
 
-    final voiceNumber = _selectedVoice!.split('.').first;
-    await _savePrefs(voiceNumber);
+    final voiceNumber = voice.split('.').first;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('instrument', instrument);
+    await prefs.setString('voice', voiceNumber);
 
-    Navigator.pushReplacement(
-      context,
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (_) => MusicianPage(
-          instrument: _selectedInstrument!,
+          instrument: instrument,
           voice: voiceNumber,
+          darkMode: _darkMode,
         ),
       ),
     );
@@ -81,164 +85,200 @@ class _MusicianSetupPageState extends State<MusicianSetupPage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final screenWidth = MediaQuery.of(context).size.width;
-    final screenHeight = MediaQuery.of(context).size.height;
-    final iconSize = screenWidth * 0.18; // Icon proportional
-    final cardPadding = screenWidth * 0.05;
+    final colors = Theme.of(context).colorScheme;
 
     return Scaffold(
-      body: Container(
-        width: screenWidth,
-        height: screenHeight,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
-        child: SafeArea(
-          bottom: false,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              return SingleChildScrollView(
-                padding: EdgeInsets.symmetric(
-                    horizontal: cardPadding, vertical: screenHeight * 0.04),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minHeight: constraints.maxHeight - screenHeight * 0.08,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const _BrandHeader(),
+                  const SizedBox(height: 28),
+                  Text(
+                    'Dein Platz im\nMusikverein',
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                          color: colors.onSurface,
+                          fontWeight: FontWeight.w800,
+                          height: 1.08,
+                        ),
                   ),
-                  child: IntrinsicHeight(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Center(
-                          child: Container(
-                            padding: EdgeInsets.all(screenWidth * 0.06),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.2),
-                              shape: BoxShape.circle,
+                  const SizedBox(height: 10),
+                  Text(
+                    'Wähle Instrument und Stimme. Danach bist du direkt mit dem Dirigentenpult verbunden.',
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          color: colors.onSurfaceVariant,
+                          height: 1.45,
+                        ),
+                  ),
+                  const SizedBox(height: 24),
+                  _SelectionCard(
+                    number: '01',
+                    title: 'Instrument',
+                    subtitle: 'Was spielst du?',
+                    icon: Icons.piano,
+                    child: DropdownButtonFormField<String>(
+                      key: ValueKey(_selectedInstrument),
+                      initialValue: _selectedInstrument,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Instrument auswählen',
+                      ),
+                      items: _instruments
+                          .map(
+                            (instrument) => DropdownMenuItem(
+                              value: instrument,
+                              child: Text(instrument),
                             ),
-                            child: Icon(Icons.music_note,
-                                size: iconSize, color: Colors.white),
-                          ),
-                        ),
-                        SizedBox(height: screenHeight * 0.03),
-                        Text(
-                          'Deine Einstellungen',
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.headlineSmall?.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 0.5,
-                            fontSize: screenWidth * 0.065,
-                          ),
-                        ),
-                        SizedBox(height: screenHeight * 0.05),
-                        // Instrument Card
-                        _SelectionCard(
-                          title: 'Instrument',
-                          subtitle: 'Wähle dein Instrument',
-                          icon: Icons.queue_music,
-                          child: _buildDropdown(
-                            value: _selectedInstrument,
-                            items: _instruments,
-                            onChanged: (v) =>
-                                setState(() => _selectedInstrument = v),
-                          ),
-                        ),
-                        SizedBox(height: screenHeight * 0.025),
-                        // Stimme Card
-                        _SelectionCard(
-                          title: 'Stimme',
-                          subtitle: 'Wähle deine Stimme',
-                          icon: Icons.record_voice_over,
-                          child: _buildDropdown(
-                            value: _selectedVoice,
-                            items: _voices,
-                            onChanged: (v) => setState(() => _selectedVoice = v),
-                          ),
-                        ),
-                        SizedBox(height: screenHeight * 0.05),
-                        ElevatedButton.icon(
-                          onPressed: _openMusician,
-                          icon: const Icon(Icons.arrow_forward,
-                              color: Colors.blueAccent),
-                          label: Text(
-                            'Weiter als Musiker',
-                            style: TextStyle(
-                              fontSize: screenWidth * 0.045,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blueAccent,
-                            ),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            padding: EdgeInsets.symmetric(
-                                vertical: screenHeight * 0.02),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(28),
-                            ),
-                            elevation: 6,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        const Spacer(),
-                      ],
+                          )
+                          .toList(),
+                      onChanged: _loading
+                          ? null
+                          : (value) =>
+                              setState(() => _selectedInstrument = value),
                     ),
                   ),
-                ),
-              );
-            },
+                  const SizedBox(height: 14),
+                  _SelectionCard(
+                    number: '02',
+                    title: 'Stimme',
+                    subtitle: 'Welche Noten gehören zu dir?',
+                    icon: Icons.graphic_eq,
+                    child: DropdownButtonFormField<String>(
+                      key: ValueKey(_selectedVoice),
+                      initialValue: _selectedVoice,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Stimme auswählen',
+                      ),
+                      items: _voices
+                          .map(
+                            (voice) => DropdownMenuItem(
+                              value: voice,
+                              child: Text(voice),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: _loading
+                          ? null
+                          : (value) => setState(() => _selectedVoice = value),
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  FilledButton.icon(
+                    onPressed: _loading ? null : _openMusician,
+                    icon: Icon(
+                        _loading ? Icons.hourglass_top : Icons.arrow_forward),
+                    label: Text(
+                        _loading ? 'Einstellungen laden …' : 'Zum Musikerpult'),
+                  ),
+                  const SizedBox(height: 15),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.lock_outline,
+                          size: 16, color: colors.onSurfaceVariant),
+                      const SizedBox(width: 7),
+                      Flexible(
+                        child: Text(
+                          'Deine Auswahl wird nur auf diesem Gerät gespeichert.',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(color: colors.onSurfaceVariant),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
     );
   }
+}
 
-  Widget _buildDropdown({
-    required String? value,
-    required List<String> items,
-    required Function(String?) onChanged,
-  }) {
-    return DropdownButtonFormField<String>(
-      initialValue: value,
-      hint: const Text('Bitte wählen', style: TextStyle(color: Colors.white70)),
-      isExpanded: true,
-      dropdownColor: Colors.blue.shade700.withValues(alpha: 0.95),
-      iconEnabledColor: Colors.white,
-      style: const TextStyle(color: Colors.white, fontSize: 16),
-      decoration: InputDecoration(
-        filled: true,
-        fillColor: Colors.white.withValues(alpha: 0.15),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide.none,
+class _BrandHeader extends StatelessWidget {
+  const _BrandHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(23),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppTheme.midnight, Color(0xFF0B5961)],
         ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.midnight.withValues(alpha: 0.18),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
       ),
-      items: items
-          .map(
-            (s) => DropdownMenuItem(
-              value: s,
-              child: Text(s, style: const TextStyle(color: Colors.white)),
+      child: Row(
+        children: [
+          Container(
+            width: 58,
+            height: 58,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(19),
+              border: Border.all(color: Colors.white24),
             ),
-          )
-          .toList(),
-      onChanged: onChanged,
+            child: const Icon(Icons.music_note, color: Colors.white, size: 32),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'MARSCHPAD',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: Colors.white70,
+                        letterSpacing: 2.1,
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Musikverein Scharrel',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
 class _SelectionCard extends StatelessWidget {
+  final String number;
   final String title;
   final String subtitle;
   final IconData icon;
   final Widget child;
 
   const _SelectionCard({
+    required this.number,
     required this.title,
     required this.subtitle,
     required this.icon,
@@ -247,49 +287,55 @@ class _SelectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final screenHeight = MediaQuery.of(context).size.height;
-
+    final colors = Theme.of(context).colorScheme;
     return Card(
-      color: Colors.white.withValues(alpha: 0.15),
-      elevation: 5,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        splashColor: Colors.white24,
-        onTap: () {},
-        child: Padding(
-          padding: EdgeInsets.all(screenWidth * 0.05),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  CircleAvatar(
-                    radius: screenWidth * 0.08,
-                    backgroundColor: Colors.white.withValues(alpha: 0.2),
-                    child: Icon(icon, color: Colors.white, size: screenWidth * 0.08),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: colors.secondaryContainer,
+                    borderRadius: BorderRadius.circular(15),
                   ),
-                  SizedBox(width: screenWidth * 0.04),
-                  Column(
+                  child: Icon(icon, color: colors.secondary),
+                ),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(title,
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: screenWidth * 0.045,
-                              fontWeight: FontWeight.bold)),
-                      Text(subtitle,
-                          style: TextStyle(
-                              color: Colors.white70, fontSize: screenWidth * 0.032)),
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w700)),
+                      Text(
+                        subtitle,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: colors.onSurfaceVariant,
+                            ),
+                      ),
                     ],
                   ),
-                ],
-              ),
-              SizedBox(height: screenHeight * 0.02),
-              child,
-            ],
-          ),
+                ),
+                Text(
+                  number,
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: colors.secondary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 17),
+            child,
+          ],
         ),
       ),
     );

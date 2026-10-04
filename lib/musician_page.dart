@@ -8,6 +8,7 @@ import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../config/app_config.dart';
 import '../models/update_info.dart';
 import '../services/nextcloud_service.dart';
@@ -15,6 +16,7 @@ import '../services/notification_service.dart';
 import '../services/version_checker.dart';
 import '../ui/update_dialog.dart';
 import '../utils/logger.dart';
+import '../theme/app_theme.dart';
 import 'offline_practice_page.dart';
 import 'settings_page.dart';
 
@@ -40,7 +42,7 @@ class MusicianPage extends StatefulWidget {
 }
 
 class _MusicianPageState extends State<MusicianPage>
-  with WidgetsBindingObserver {
+    with WidgetsBindingObserver {
   final NextcloudService _nextcloudService = NextcloudService();
   WebSocketChannel? _channel;
   Timer? _pingTimer;
@@ -199,7 +201,7 @@ class _MusicianPageState extends State<MusicianPage>
         if (map['instrument'] != _instrument || map['voice'] != _voice) return;
 
         try {
-          final pdfName = '${map['name']}_${_instrument}_${_voice}.pdf';
+          final pdfName = '${map['name']}_${_instrument}_$_voice.pdf';
           final file = await _nextcloudService.downloadPdf(pdfName);
 
           final piece = ReceivedPiece(
@@ -209,19 +211,23 @@ class _MusicianPageState extends State<MusicianPage>
             active: true,
           );
 
-          _received.where((p) => p.name == map['name']).forEach((p) => p.active = false);
+          _received
+              .where((p) => p.name == map['name'])
+              .forEach((p) => p.active = false);
           _received.add(piece);
 
           if (mounted) {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => PdfViewerScreen(
-                    filePath: piece.path, title: piece.name, darkMode: _darkMode),
+                    filePath: piece.path,
+                    title: piece.name,
+                    darkMode: _darkMode),
               ),
             );
           }
 
-          _showSnackBar('Neue Noten: ${piece.name}');
+          _showSnackBar('Neue Noten: $piece.name');
           if (mounted) setState(() {});
         } catch (e) {
           debugPrint('PDF-Download-Fehler: $e');
@@ -230,7 +236,8 @@ class _MusicianPageState extends State<MusicianPage>
         break;
 
       case 'end_piece_signal':
-        final ended = _received.where((p) => p.name == map['name'] && p.active).toList();
+        final ended =
+            _received.where((p) => p.name == map['name'] && p.active).toList();
 
         for (final p in ended) {
           p.active = false;
@@ -239,7 +246,9 @@ class _MusicianPageState extends State<MusicianPage>
         }
 
         if (mounted) {
-          while (Navigator.of(context).canPop()) Navigator.of(context).pop();
+          while (Navigator.of(context).canPop()) {
+            Navigator.of(context).pop();
+          }
         }
 
         _showSnackBar('Stück beendet: ${map['name']}');
@@ -277,7 +286,8 @@ class _MusicianPageState extends State<MusicianPage>
 
     final currentVersion = (await PackageInfo.fromPlatform()).version;
     if (!VersionChecker.isNewerVersion(currentVersion, serverVersion) ||
-        _updateDialogShown || !mounted) {
+        _updateDialogShown ||
+        !mounted) {
       return;
     }
 
@@ -306,8 +316,6 @@ class _MusicianPageState extends State<MusicianPage>
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(text),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );
   }
@@ -315,109 +323,137 @@ class _MusicianPageState extends State<MusicianPage>
   @override
   Widget build(BuildContext context) {
     final active = _received.where((p) => p.active).toList();
-    final themeData = _darkMode ? ThemeData.dark() : ThemeData.light();
-    final bgColor = _darkMode ? Colors.grey[900]! : const Color(0xFFF7F8FC);
-    final appBarColor = _darkMode ? Colors.grey[850]! : Colors.blue.shade900;
+    final themeData = _darkMode ? AppTheme.dark : AppTheme.light;
 
     return Theme(
       data: themeData,
       child: Scaffold(
-        backgroundColor: bgColor,
         appBar: AppBar(
-          elevation: 0,
-          backgroundColor: appBarColor,
-          foregroundColor: Colors.white,
-          title: const Text('Marschpad-Musiker', style: TextStyle(fontWeight: FontWeight.w600)),
-          centerTitle: true,
-          leading: Builder(
-            builder: (context) => IconButton(
-              icon: const Icon(Icons.menu),
-              onPressed: () => Scaffold.of(context).openDrawer(),
-            ),
-          ),
-        ),
-        drawer: Drawer(
-          child: ListView(
-            padding: EdgeInsets.zero,
+          title: const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              DrawerHeader(
-                decoration: BoxDecoration(color: appBarColor),
-                child: const Text(
-                  'Menü',
-                  style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+              Text('Marschpad'),
+              Text(
+                'MUSIKERPULT',
+                style: TextStyle(
+                  fontSize: 10,
+                  letterSpacing: 1.8,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
-              ListTile(
-                leading: const Icon(Icons.music_note),
-                title: const Text('Offline üben'),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => OfflinePracticePage(
-                        instrument: _instrument,
-                        voice: _voice,
-                      ),
-                    ),
-                  );
-                },
+            ],
+          ),
+          actions: [
+            IconButton(
+              tooltip: 'Offline-Noten',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => OfflinePracticePage(
+                    instrument: _instrument,
+                    voice: _voice,
+                    darkMode: _darkMode,
+                  ),
+                ),
               ),
-              ListTile(
-                leading: const Icon(Icons.settings),
-                title: const Text('Einstellungen'),
-                onTap: () async {
-                  Navigator.of(context).pop();
-                  final result = await Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => SettingsPage(
-                        instrument: _instrument,
-                        voice: _voice,
+              icon: const Icon(Icons.library_music_outlined),
+            ),
+            IconButton(
+              tooltip: 'Einstellungen',
+              onPressed: _openSettings,
+              icon: const Icon(Icons.tune_rounded),
+            ),
+            const SizedBox(width: 5),
+          ],
+        ),
+        body: SafeArea(
+          top: false,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _InfoHeader(
+                instrument: _instrument,
+                voice: _voice,
+                status: _status,
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 2, 20, 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Auf deinem Pult',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
                       ),
                     ),
-                  );
-                  if (result != null && mounted) {
-                    setState(() {
-                      _instrument = result['instrument'];
-                      _voice = result['voice'];
-                      _darkMode = result['darkMode'] ?? _darkMode;
-                    });
-
-                    // Callback, um Dark Mode global zurückzugeben
-                    if (widget.onSettingsChanged != null) {
-                      widget.onSettingsChanged!({
-                        'instrument': _instrument,
-                        'voice': _voice,
-                        'darkMode': _darkMode,
-                      });
-                    }
-
-                    _connect();
-                  }
-                },
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 11, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.secondaryContainer,
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      child: Text(
+                        '${active.length}',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.secondary,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: active.isEmpty
+                    ? const _EmptyState()
+                    : ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                        itemCount: active.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 12),
+                        itemBuilder: (_, index) =>
+                            _PieceCard(piece: active[index]),
+                      ),
               ),
             ],
           ),
         ),
-        body: Column(
-          children: [
-            _InfoHeader(
-                instrument: _instrument,
-                voice: _voice,
-                status: _status,
-                darkMode: _darkMode),
-            Expanded(
-              child: active.isEmpty
-                  ? _EmptyState(darkMode: _darkMode)
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(20),
-                      itemCount: active.length,
-                      itemBuilder: (_, i) => _PieceCard(piece: active[i], darkMode: _darkMode),
-                    ),
-            ),
-          ],
+      ),
+    );
+  }
+
+  Future<void> _openSettings() async {
+    final result = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(
+        builder: (_) => SettingsPage(
+          instrument: _instrument,
+          voice: _voice,
+          darkMode: _darkMode,
         ),
       ),
     );
+    if (result == null || !mounted) return;
+
+    final instrument = result['instrument'] as String;
+    final voice = result['voice'] as String;
+    final darkMode = result['darkMode'] as bool;
+    final changedConnection = instrument != _instrument || voice != _voice;
+    setState(() {
+      _instrument = instrument;
+      _voice = voice;
+      _darkMode = darkMode;
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('instrument', instrument);
+    await prefs.setString('voice', voice);
+    await prefs.setBool('darkMode', darkMode);
+    widget.onSettingsChanged?.call({
+      'instrument': instrument,
+      'voice': voice,
+      'darkMode': darkMode,
+    });
+    if (changedConnection) _connect();
   }
 }
 
@@ -428,54 +464,94 @@ class _InfoHeader extends StatelessWidget {
   final String instrument;
   final String voice;
   final String status;
-  final bool darkMode;
 
-  const _InfoHeader({required this.instrument, required this.voice, required this.status, required this.darkMode});
+  const _InfoHeader({
+    required this.instrument,
+    required this.voice,
+    required this.status,
+  });
 
   @override
   Widget build(BuildContext context) {
-    IconData icon;
-    Color color;
-    switch (status.toLowerCase()) {
-      case 'verbunden':
-        icon = Icons.wifi;
-        color = Colors.green;
-        break;
-      case 'verbindung fehlgeschlagen':
-        icon = Icons.wifi_off;
-        color = Colors.red;
-        break;
-      default:
-        icon = Icons.sync;
-        color = Colors.orange;
-    }
-
-    final bgColor = darkMode ? Colors.grey[850] : Colors.white;
+    final connected = status.toLowerCase() == 'verbunden';
+    final statusColor = connected ? const Color(0xFF8DE3C0) : AppTheme.amber;
 
     return Container(
-      margin: const EdgeInsets.all(20),
+      margin: const EdgeInsets.fromLTRB(20, 5, 20, 22),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: bgColor,
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppTheme.midnight, Color(0xFF0B5961)],
+        ),
         borderRadius: BorderRadius.circular(24),
-        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 14, offset: Offset(0, 6))],
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.midnight.withValues(alpha: 0.17),
+            blurRadius: 22,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       child: Row(
         children: [
-          Icon(icon, color: color, size: 28),
-          const SizedBox(width: 16),
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(17),
+              border: Border.all(color: Colors.white24),
+            ),
+            child: const Icon(Icons.music_note_rounded,
+                color: Colors.white, size: 28),
+          ),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(instrument,
-                    style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: darkMode ? Colors.white : Colors.black)),
-                Text(voice, style: TextStyle(color: darkMode ? Colors.white70 : Colors.black54)),
-                const SizedBox(height: 6),
-                Text(status, style: TextStyle(fontSize: 13, color: color, fontWeight: FontWeight.w600)),
+                    style: const TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    )),
+                const SizedBox(height: 3),
+                Text(
+                  '$voice. Stimme · Musikverein Scharrel',
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(30),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: statusColor,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 7),
+                Text(
+                  connected ? 'Live' : 'Wartet',
+                  style: TextStyle(
+                    color: statusColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ],
             ),
           ),
@@ -486,21 +562,39 @@ class _InfoHeader extends StatelessWidget {
 }
 
 class _EmptyState extends StatelessWidget {
-  final bool darkMode;
-  const _EmptyState({this.darkMode = false});
+  const _EmptyState();
 
   @override
   Widget build(BuildContext context) {
-    final color = darkMode ? Colors.white38 : Colors.black38;
+    final colors = Theme.of(context).colorScheme;
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.music_off, size: 64, color: color),
-          const SizedBox(height: 16),
-          Text('Keine aktiven Noten', style: TextStyle(fontSize: 18, color: color)),
-          const SizedBox(height: 6),
-          Text('Warte auf das nächste Stück', style: TextStyle(color: color.withValues(alpha: 0.7))),
+          Container(
+            width: 76,
+            height: 76,
+            decoration: BoxDecoration(
+              color: colors.secondaryContainer,
+              borderRadius: BorderRadius.circular(26),
+            ),
+            child: Icon(Icons.music_off_rounded,
+                size: 34, color: colors.secondary),
+          ),
+          const SizedBox(height: 18),
+          Text(
+            'Dein Pult ist bereit',
+            style: Theme.of(context)
+                .textTheme
+                .titleLarge
+                ?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 7),
+          Text(
+            'Sobald der Dirigent Noten sendet,\nerscheinen sie hier.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: colors.onSurfaceVariant, height: 1.4),
+          ),
         ],
       ),
     );
@@ -509,41 +603,64 @@ class _EmptyState extends StatelessWidget {
 
 class _PieceCard extends StatelessWidget {
   final ReceivedPiece piece;
-  final bool darkMode;
-  const _PieceCard({required this.piece, this.darkMode = false});
+  const _PieceCard({required this.piece});
 
   @override
   Widget build(BuildContext context) {
-    final bgColor = darkMode ? Colors.grey[800] : Colors.white;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 12, offset: Offset(0, 6))],
-      ),
-      child: Material(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(20),
-        child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        leading: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(14)),
-          child: const Icon(Icons.picture_as_pdf, color: Colors.red),
-        ),
-        title: Text(piece.name,
-            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: darkMode ? Colors.white : Colors.black)),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 6),
-          child: Text('Empfangen: ${piece.receivedAt.toLocal().toString().split('.')[0]}',
-              style: TextStyle(fontSize: 13, color: darkMode ? Colors.white70 : Colors.black54)),
-        ),
-        trailing: Icon(Icons.chevron_right, color: darkMode ? Colors.white70 : Colors.black45),
+    final colors = Theme.of(context).colorScheme;
+    return Card(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(22),
         onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => PdfViewerScreen(filePath: piece.path, title: piece.name, darkMode: darkMode)),
+          MaterialPageRoute(
+            builder: (_) => PdfViewerScreen(
+              filePath: piece.path,
+              title: piece.name,
+              darkMode: Theme.of(context).brightness == Brightness.dark,
+            ),
+          ),
         ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 50,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFB43C4B).withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: const Icon(Icons.picture_as_pdf_rounded,
+                    color: Color(0xFFB43C4B)),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      piece.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      'Empfangen ${piece.receivedAt.toLocal().toString().substring(0, 16)}',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: colors.onSurfaceVariant,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(Icons.open_in_new_rounded, color: colors.secondary),
+            ],
+          ),
         ),
       ),
     );
@@ -558,7 +675,11 @@ class ReceivedPiece {
   final String path;
   final DateTime receivedAt;
   bool active;
-  ReceivedPiece({required this.name, required this.path, required this.receivedAt, this.active = true});
+  ReceivedPiece(
+      {required this.name,
+      required this.path,
+      required this.receivedAt,
+      this.active = true});
 }
 
 // =========================
@@ -568,14 +689,27 @@ class PdfViewerScreen extends StatelessWidget {
   final String filePath;
   final String title;
   final bool darkMode;
-  const PdfViewerScreen({super.key, required this.filePath, required this.title, this.darkMode = false});
+  const PdfViewerScreen(
+      {super.key,
+      required this.filePath,
+      required this.title,
+      this.darkMode = false});
 
   @override
   Widget build(BuildContext context) {
+    final theme = darkMode ? AppTheme.dark : AppTheme.light;
     return Theme(
-      data: darkMode ? ThemeData.dark() : ThemeData.light(),
+      data: theme,
       child: Scaffold(
-        appBar: AppBar(title: Text(title)),
+        appBar: AppBar(
+          title: Text(title),
+          actions: const [
+            Padding(
+              padding: EdgeInsets.only(right: 16),
+              child: Icon(Icons.picture_as_pdf_outlined),
+            ),
+          ],
+        ),
         body: SfPdfViewer.file(File(filePath)),
       ),
     );

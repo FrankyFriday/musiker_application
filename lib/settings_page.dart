@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import 'theme/app_theme.dart';
+
 class SettingsPage extends StatefulWidget {
   final String instrument;
   final String voice;
@@ -23,7 +25,7 @@ class _SettingsPageState extends State<SettingsPage> {
   late bool _darkMode;
   String _appVersion = '';
 
-  final List<String> _instruments = [
+  static const _instruments = [
     'Flöte',
     'Klarinette',
     'Trompete',
@@ -36,7 +38,7 @@ class _SettingsPageState extends State<SettingsPage> {
     'Bariton',
     'Oboe',
   ];
-  final List<String> _voices = ['1', '2', '3', '4'];
+  static const _voices = ['1', '2', '3', '4'];
 
   @override
   void initState() {
@@ -49,6 +51,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _loadVersion() async {
     final info = await PackageInfo.fromPlatform();
+    if (!mounted) return;
     setState(() => _appVersion = info.version);
   }
 
@@ -57,7 +60,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _selectedVoice != widget.voice ||
       _darkMode != widget.darkMode;
 
-  Future<void> _onSavePressed() async {
+  void _save() {
     Navigator.of(context).pop({
       'instrument': _selectedInstrument,
       'voice': _selectedVoice,
@@ -65,29 +68,63 @@ class _SettingsPageState extends State<SettingsPage> {
     });
   }
 
-  Widget _buildDropdownCard({
-    required IconData icon,
+  Widget _profileDropdown({
     required String title,
+    required String subtitle,
+    required IconData icon,
     required String value,
     required List<String> options,
     required ValueChanged<String?> onChanged,
   }) {
+    final colors = (_darkMode ? AppTheme.dark : AppTheme.light).colorScheme;
     return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      elevation: 2,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: DropdownButtonFormField<String>(
-          initialValue: value,
-          items: options
-              .map((o) => DropdownMenuItem(value: o, child: Text(o)))
-              .toList(),
-          onChanged: onChanged,
-          decoration: InputDecoration(
-            icon: Icon(icon, color: Colors.blueGrey),
-            labelText: title,
-            border: InputBorder.none,
-          ),
+        padding: const EdgeInsets.all(17),
+        child: Row(
+          children: [
+            Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: colors.secondaryContainer,
+                borderRadius: BorderRadius.circular(15),
+              ),
+              child: Icon(icon, color: colors.secondary),
+            ),
+            const SizedBox(width: 13),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            DropdownButton<String>(
+              value: value,
+              underline: const SizedBox.shrink(),
+              borderRadius: BorderRadius.circular(16),
+              items: options
+                  .map((option) => DropdownMenuItem(
+                        value: option,
+                        child: Text(option),
+                      ))
+                  .toList(),
+              onChanged: onChanged,
+            ),
+          ],
         ),
       ),
     );
@@ -95,72 +132,137 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Einstellungen'),
-        backgroundColor: Colors.blueGrey.shade900,
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            const SizedBox(height: 12),
-            _buildDropdownCard(
-              icon: Icons.music_note,
-              title: 'Instrument',
-              value: _selectedInstrument,
-              options: _instruments,
-              onChanged: (val) => setState(() => _selectedInstrument = val!),
-            ),
-            const SizedBox(height: 12),
-            _buildDropdownCard(
-              icon: Icons.mic,
-              title: 'Stimme',
-              value: _selectedVoice,
-              options: _voices,
-              onChanged: (val) => setState(() => _selectedVoice = val!),
-            ),
-            const SizedBox(height: 24),
-            Card(
-              shape:
-                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              elevation: 2,
-              child: SwitchListTile(
-                title: const Text('Dunkles Theme'),
-                secondary:
-                    const Icon(Icons.brightness_6, color: Colors.blueGrey),
-                value: _darkMode,
-                onChanged: (val) => setState(() => _darkMode = val),
+    final colors = (_darkMode ? AppTheme.dark : AppTheme.light).colorScheme;
+    return Theme(
+      data: _darkMode ? AppTheme.dark : AppTheme.light,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Einstellungen'),
+        ),
+        body: SafeArea(
+          top: false,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+            children: [
+              Text(
+                'Dein Musikerprofil',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleLarge
+                    ?.copyWith(fontWeight: FontWeight.w800),
               ),
-            ),
-            const Spacer(),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _onSavePressed,
-                icon: const Icon(Icons.save),
-                label: const Text('Speichern'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blueGrey.shade900,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  textStyle: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.bold),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+              const SizedBox(height: 5),
+              Text(
+                'Passe deine Notenansicht an.',
+                style: TextStyle(color: colors.onSurfaceVariant),
+              ),
+              const SizedBox(height: 18),
+              _profileDropdown(
+                title: 'Instrument',
+                subtitle: 'Dein Instrument im Verein',
+                icon: Icons.piano,
+                value: _selectedInstrument,
+                options: _instruments,
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() => _selectedInstrument = value);
+                  }
+                },
+              ),
+              const SizedBox(height: 10),
+              _profileDropdown(
+                title: 'Stimme',
+                subtitle: 'Dein Notensatz',
+                icon: Icons.graphic_eq,
+                value: _selectedVoice,
+                options: _voices,
+                onChanged: (value) {
+                  if (value != null) setState(() => _selectedVoice = value);
+                },
+              ),
+              const SizedBox(height: 22),
+              Text(
+                'Darstellung',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleLarge
+                    ?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 12),
+              Card(
+                child: SwitchListTile(
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 17, vertical: 7),
+                  secondary: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: colors.secondaryContainer,
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    child: Icon(
+                      _darkMode
+                          ? Icons.dark_mode_rounded
+                          : Icons.light_mode_rounded,
+                      color: colors.secondary,
+                    ),
+                  ),
+                  title: const Text('Dunkles Design',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: const Text('Augenschonend bei wenig Licht'),
+                  value: _darkMode,
+                  onChanged: (value) => setState(() => _darkMode = value),
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-            Center(
-              child: Text(
-                _appVersion.isEmpty ? 'Version …' : 'Version $_appVersion',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              const SizedBox(height: 22),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(17),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 46,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          color: colors.secondaryContainer,
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        child: Icon(Icons.info_outline_rounded,
+                            color: colors.secondary),
+                      ),
+                      const SizedBox(width: 13),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Marschpad Musiker',
+                                style: TextStyle(fontWeight: FontWeight.w700)),
+                            SizedBox(height: 3),
+                            Text('Musikverein Scharrel'),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        _appVersion.isEmpty ? '…' : 'v$_appVersion',
+                        style: TextStyle(
+                          color: colors.onSurfaceVariant,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
+        ),
+        bottomNavigationBar: SafeArea(
+          minimum: const EdgeInsets.fromLTRB(20, 10, 20, 16),
+          child: FilledButton.icon(
+            onPressed: _save,
+            icon: const Icon(Icons.check_rounded),
+            label: Text(_hasChanges ? 'Änderungen speichern' : 'Fertig'),
+          ),
         ),
       ),
     );

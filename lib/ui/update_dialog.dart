@@ -18,36 +18,60 @@ class UpdateDialog extends ConsumerWidget {
     return AlertDialog(
       title: const Text('Update verfügbar'),
       content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Neue Version: ${updateInfo.version}'),
-            const SizedBox(height: 8),
-            Text('Änderungen: ${updateInfo.notes}'),
-            if (updateInfo.mandatory) ...[
-              const SizedBox(height: 8),
-              const Text(
-                'Dieses Update ist erforderlich.',
-                style:
-                    TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.secondaryContainer,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.system_update_alt_rounded,
+                    size: 18, color: Theme.of(context).colorScheme.secondary),
+                const SizedBox(width: 8),
+                Text(
+                  'Version ${updateInfo.version}',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(updateInfo.notes),
+          if (updateInfo.mandatory) ...[
+            const SizedBox(height: 14),
+            Text(
+              'Dieses Update ist erforderlich.',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.error,
+                fontWeight: FontWeight.w700,
               ),
-            ],
-            if (downloading) ...[
-              const SizedBox(height: 16),
-              const Text('Herunterladen...'),
-              const SizedBox(height: 8),
-              LinearProgressIndicator(value: progress),
-              Text('${(progress * 100).toStringAsFixed(1)}%'),
-            ],
-          ]),
+            ),
+          ],
+          if (downloading) ...[
+            const SizedBox(height: 20),
+            LinearProgressIndicator(value: progress),
+            const SizedBox(height: 8),
+            Text('Download ${(progress * 100).toStringAsFixed(0)}%'),
+          ],
+        ],
+      ),
       actions: [
         if (!updateInfo.mandatory && !downloading)
           TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Später')),
-        ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Später'),
+          ),
+        FilledButton.icon(
             onPressed: downloading ? null : () => _download(context, ref),
-            child: Text(downloading ? 'Lädt...' : 'Herunterladen')),
+            icon: Icon(downloading
+                ? Icons.downloading_rounded
+                : Icons.download_rounded),
+            label: Text(downloading ? 'Lädt …' : 'Herunterladen')),
       ],
     );
   }

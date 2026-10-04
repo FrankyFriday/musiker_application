@@ -1,31 +1,93 @@
-# Marschpad Musiker
+# Marschpad – Musiker-App
 
-Die Musiker-App zeigt empfangene Noten an und kann PDFs für die Offline-Nutzung
-herunterladen. Notenlisten und PDF-Dateien werden über den noten-server bezogen;
-Nextcloud-Zugangsdaten liegen ausschließlich in der Serverkonfiguration.
+Die Musiker-App verbindet das Notenpult des Musikvereins Scharrel mit den
+Musikerinnen und Musikern. Nach Auswahl von Instrument und Stimme empfängt sie
+die Steuersignale des Dirigenten, lädt passende Noten-PDFs und zeigt diese im
+integrierten PDF-Viewer an. Bereits geladene Stücke stehen für die Offline-
+Vorbereitung zur Verfügung. Die Oberfläche unterstützt helle und dunkle
+Darstellung.
 
-Der Notenserver stellt `GET /api/notes` für die PDF-Liste und
-`GET /api/notes/<relative-path>` für einzelne PDFs bereit. Der Proxy ist auf
-PDFs im Nextcloud-Ordner `noten` begrenzt, aber absichtlich ohne App-Anmeldung:
-Jeder, der den Notenserver erreicht, kann diese Noten auflisten und abrufen.
+## Funktionen
 
-## Android-Releases
+- Einrichtung und lokale Speicherung von Instrument, Stimme und Darstellung
+- Echtzeitverbindung zum Notenserver mit automatischer Wiederverbindung
+- Automatischer Download der zum Stück, Instrument und zur Stimme passenden PDF
+- Offline-Notenliste, Suche und integrierter PDF-Viewer
+- Anzeige von Serverstatus, Wartungshinweisen und Update-Mitteilungen
+- Android-Updates mit Prüfung von Version, Paketkennung und APK-Signatur
 
-Der Workflow `Android Release` erstellt und prüft ein signiertes APK, lädt es
-zu Nextcloud hoch, erzeugt einen öffentlichen Nur-Lese-Downloadlink und
-aktualisiert vor dem Deployment die Octopus-Produktionsvariablen. Der APK-Link
-ist öffentlich, damit App-Updater und noten-server das APK ohne Nextcloud-
-Zugangsdaten herunterladen können.
+## Verbindung und Noten
 
-Folgende GitHub-Actions-Secrets müssen in diesem Repository konfiguriert sein:
+Die App registriert sich über `wss://ws.notenserver.duckdns.org` mit der
+Kennung `musiker_application` (kanonische Serverkennung:
+`musiker_app`). Die Notenliste wird über `GET /api/notes` geladen. Einzelne
+PDFs kommen über `GET /api/notes/<relativer-pfad>` vom Notenserver-Proxy;
+Nextcloud-Zugangsdaten sind nicht in der App enthalten.
 
-- `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_PASSWORD`, `KEY_ALIAS`
-- `NC_USER`, `NC_PASS`
-- `OCTOPUS_API_KEY`, `OCTOPUS_SPACE`
-- `NOTEN_SERVER_API_KEY`
+Der Proxy ist derzeit nicht durch eine Anmeldung der Apps geschützt. Wer den
+Notenserver erreichen kann, kann die bereitgestellten Noten auflisten und
+abrufen. Vertrauliche Zugangsdaten gehören ausschließlich in die
+Serverkonfiguration bzw. GitHub Actions Secrets.
 
-`OCTOPUS_API_KEY` muss ein gültiger Octopus-API-Schlüssel mit Berechtigungen zum
-Ändern von Projektvariablen sowie zum Erstellen und Deployen von Releases sein.
-Der Workflow prüft den Schlüssel vor dem Android-Build. Für einen manuellen
-Build ohne Octopus-Deployment kann `deploy_to_octopus` auf `false` gesetzt
+Dateien werden nach dem Muster `Stück_Instrument_Stimme.pdf` benannt, zum
+Beispiel `Marsch_Trompete_1.pdf`. Die Auswahl in der App muss mit Instrument
+und Stimmennummer im Dateinamen übereinstimmen. Heruntergeladene PDFs werden im
+Anwendungsdatenverzeichnis des Geräts gespeichert.
+
+## Entwickeln und prüfen
+
+Voraussetzungen: Flutter/Dart gemäß `pubspec.yaml` sowie ein Android-SDK für
+Android-Builds.
+
+```powershell
+flutter pub get
+flutter analyze --no-pub
+flutter test --no-pub
+flutter run
+```
+
+Die Serveradresse und App-Kennung sind in `lib/config/app_config.dart`
+hinterlegt. Änderungen müssen mit dem Notenserver und der Dirigenten-App
+abgestimmt werden.
+
+## Android-Release und Update-Verteilung
+
+Der GitHub-Actions-Workflow **Android Release** erstellt ein signiertes APK,
+prüft Version und Signatur und lädt es in den Nextcloud-Ordner `releases`.
+Danach erstellt und testet er einen öffentlichen Nur-Lese-Downloadlink. Für
+Octopus-Releases aktualisiert er die Production-Variablen `ApkUrl` und
+`NotenServerApiKey`, erstellt den Release `musiker_application` und startet
+das Production-Deployment. App-Updates werden vom Notenserver per
+`release_announce` bekanntgegeben.
+
+Der Workflow startet per Tag `vX.Y.Z` oder manuell mit einer Version im Format
+`X.Y.Z`. Für einen Build und APK-Upload ohne Octopus kann der manuelle Eingang
+`deploy_to_octopus` auf `false` gesetzt werden.
+
+Benötigte Repository-Secrets:
+
+- Android-Signierung: `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_PASSWORD`,
+  `KEY_ALIAS`
+- Nextcloud-Upload und Freigabe: `NC_USER`, `NC_PASS`
+- Octopus-Deployment: `OCTOPUS_API_KEY`, `OCTOPUS_SPACE`
+- Server-Releasevariable: `NOTEN_SERVER_API_KEY`
+
+Der Octopus-Schlüssel muss gültig sein und die Projektvariablen ändern sowie
+Releases erstellen und deployen dürfen. Der Workflow validiert ihn vor dem
+Build, wenn ein Octopus-Deployment angefordert wurde. Der Keystore wird nur
+temporär in der CI erzeugt und darf nicht eingecheckt oder in Logs ausgegeben
 werden.
+
+## Projektstruktur
+
+- `lib/musician_setup.dart` – Instrument- und Stimmenauswahl
+- `lib/musician_page.dart` – Musikerpult, Status und Steuersignale
+- `lib/offline_practice_page.dart` – lokal gespeicherte Noten und PDF-Viewer
+- `lib/services/` – Notenserver-Proxy, Download und Updateprüfung
+- `lib/theme/app_theme.dart` – gemeinsames helles und dunkles Designsystem
+- `android/` – Android-App und Release-Signierung
+- `.github/workflows/release.yml` – signierter Build und Verteilung
+
+## Lizenz
+
+Interne Nutzung – Musikverein Scharrel. Alle Rechte vorbehalten.
