@@ -252,16 +252,55 @@ jobs:
           done
           echo "Updated the Production APK URL and server API key."
 
+      - name: Resolve Octopus release channel
+        id: octopus_channel
+        if: github.event_name != 'workflow_dispatch' || inputs.deploy_to_octopus
+        env:
+          OCTOPUS_URL: https://franky.octopus.app
+          OCTOPUS_API_KEY: ${{ secrets.OCTOPUS_API_KEY }}
+          OCTOPUS_SPACE: ${{ secrets.OCTOPUS_SPACE }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          api_get() {
+            curl --fail --silent --show-error \
+              -H "X-Octopus-ApiKey: $OCTOPUS_API_KEY" \
+              -H 'Accept: application/json' "$1"
+          }
+
+          SPACES="$(api_get "$OCTOPUS_URL/api/spaces/all")"
+          SPACE_ID="$(jq -er --arg value "$OCTOPUS_SPACE" \
+            '.[] | select(.Id == $value or .Name == $value) | .Id' \
+            <<< "$SPACES" | head -n 1)"
+          PROJECTS="$(api_get "$OCTOPUS_URL/api/$SPACE_ID/projects/all")"
+          PROJECT_ID="$(jq -er \
+            '.[] | select(.Name == "musiker_application") | .Id' \
+            <<< "$PROJECTS")"
+          CHANNELS="$(api_get "$OCTOPUS_URL/api/$SPACE_ID/projects/$PROJECT_ID/channels")"
+          CHANNEL_ID="$(jq -er '
+            [if type == "array" then .[] else .Items[]? end] as $channels
+            | [$channels[] | select(.IsDefault == true)] as $defaults
+            | if ($defaults | length) == 1 then $defaults[0].Id
+              elif ($channels | length) == 1 then $channels[0].Id
+              else error("Expected one default or one available project release channel")
+              end
+          ' <<< "$CHANNELS")"
+          CHANNEL="$(api_get "$OCTOPUS_URL/api/$SPACE_ID/channels/$CHANNEL_ID")"
+          echo "name=$(jq -er '.Name' <<< "$CHANNEL")" >> "$GITHUB_OUTPUT"
+          echo "Resolved the Musiker project's release channel."
+
       - name: Create and deploy Octopus release
         if: github.event_name != 'workflow_dispatch' || inputs.deploy_to_octopus
         env:
           OCTOPUS_URL: https://franky.octopus.app
           OCTOPUS_API_KEY: ${{ secrets.OCTOPUS_API_KEY }}
           OCTOPUS_SPACE: ${{ secrets.OCTOPUS_SPACE }}
+          OCTOPUS_CHANNEL: ${{ steps.octopus_channel.outputs.name }}
           VERSION: ${{ steps.release.outputs.version }}
         run: |
           octopus release create \
             --project "musiker_application" \
+            --channel "$OCTOPUS_CHANNEL" \
             --version "$VERSION" \
             --release-notes "APK Release $VERSION" \
             --no-prompt
