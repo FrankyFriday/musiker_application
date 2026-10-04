@@ -7,6 +7,11 @@ on:
         description: Release version (x.y.z)
         required: true
         type: string
+      deploy_to_octopus:
+        description: Update the Production variables and run the Octopus deployment
+        required: true
+        type: boolean
+        default: true
   push:
     tags:
       - "v*"
@@ -47,6 +52,31 @@ jobs:
             exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Validate Octopus and server API credentials
+        if: github.event_name != 'workflow_dispatch' || inputs.deploy_to_octopus
+        env:
+          OCTOPUS_API_KEY: ${{ secrets.OCTOPUS_API_KEY }}
+          OCTOPUS_SPACE: ${{ secrets.OCTOPUS_SPACE }}
+          NOTEN_SERVER_API_KEY: ${{ secrets.NOTEN_SERVER_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in OCTOPUS_API_KEY OCTOPUS_SPACE NOTEN_SERVER_API_KEY; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Required GitHub secret $name is not configured."
+              exit 1
+            fi
+          done
+
+          curl --fail --silent --show-error \
+            -H "X-Octopus-ApiKey: $OCTOPUS_API_KEY" \
+            -H 'Accept: application/json' \
+            "https://franky.octopus.app/api/spaces/all" \
+            -o /dev/null || {
+              echo "::error::OCTOPUS_API_KEY is rejected by Octopus; update the musician_application repository secret."
+              exit 1
+            }
 
       - name: Configure Android signing
         env:
@@ -136,12 +166,94 @@ jobs:
           curl --fail --silent --show-error --user "$NC_USER:$NC_PASS" \
             --upload-file "$APK" "$DAV_ROOT/releases/$APK"
 
+      - name: Create and verify public APK download
+        id: apk_share
+        env:
+          NC_USER: ${{ secrets.NC_USER }}
+          NC_PASS: ${{ secrets.NC_PASS }}
+          VERSION: ${{ steps.release.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="musiker_application-$VERSION.apk"
+          SHARE_RESPONSE="$(curl --fail --silent --show-error --user "$NC_USER:$NC_PASS" \
+            -H 'OCS-APIRequest: true' \
+            -H 'Accept: application/json' \
+            --data-urlencode "path=/releases/$APK" \
+            --data-urlencode 'shareType=3' \
+            --data-urlencode 'permissions=1' \
+            'https://cloud.notenserver.duckdns.org/ocs/v2.php/apps/files_sharing/api/v1/shares?format=json')"
+          if ! jq -e '.ocs.meta.statuscode == 200 and (.ocs.data.url | type == "string")' \
+              <<< "$SHARE_RESPONSE" >/dev/null; then
+            echo "::error::Nextcloud did not create a public read-only APK share."
+            exit 1
+          fi
+
+          SHARE_URL="$(jq -er '.ocs.data.url' <<< "$SHARE_RESPONSE")"
+          DOWNLOAD_URL="${SHARE_URL%/}/download"
+          HTTP_STATUS="$(curl --location --silent --show-error --output /dev/null \
+            --range 0-0 --write-out '%{http_code}' "$DOWNLOAD_URL")"
+          if [[ "$HTTP_STATUS" != "200" && "$HTTP_STATUS" != "206" ]]; then
+            echo "::error::The public APK download URL returned HTTP $HTTP_STATUS."
+            exit 1
+          fi
+          echo "url=$DOWNLOAD_URL" >> "$GITHUB_OUTPUT"
+          echo "Created and verified a public read-only download for Musiker $VERSION."
+
       - name: Install Octopus CLI
+        if: github.event_name != 'workflow_dispatch' || inputs.deploy_to_octopus
         uses: OctopusDeploy/install-octopus-cli-action@v3
         with:
           version: latest
 
+      - name: Update Octopus Production release variables
+        if: github.event_name != 'workflow_dispatch' || inputs.deploy_to_octopus
+        env:
+          OCTOPUS_URL: https://franky.octopus.app
+          OCTOPUS_API_KEY: ${{ secrets.OCTOPUS_API_KEY }}
+          OCTOPUS_SPACE: ${{ secrets.OCTOPUS_SPACE }}
+          NOTEN_SERVER_API_KEY: ${{ secrets.NOTEN_SERVER_API_KEY }}
+          APK_URL: ${{ steps.apk_share.outputs.url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          api_get() {
+            curl --fail --silent --show-error \
+              -H "X-Octopus-ApiKey: $OCTOPUS_API_KEY" \
+              -H 'Accept: application/json' "$1"
+          }
+
+          SPACES="$(api_get "$OCTOPUS_URL/api/spaces/all")"
+          SPACE_ID="$(jq -er --arg value "$OCTOPUS_SPACE" \
+            '.[] | select(.Id == $value or .Name == $value) | .Id' \
+            <<< "$SPACES" | head -n 1)"
+          PROJECTS="$(api_get "$OCTOPUS_URL/api/$SPACE_ID/projects/all")"
+          PROJECT="$(jq -cer '.[] | select(.Name == "musiker_application")' <<< "$PROJECTS")"
+          PROJECT_ID="$(jq -er '.Id' <<< "$PROJECT")"
+          VARIABLE_SET_ID="$(jq -er '.VariableSetId' <<< "$PROJECT")"
+          ENVIRONMENTS="$(api_get "$OCTOPUS_URL/api/$SPACE_ID/environments/all")"
+          PRODUCTION_ID="$(jq -er '.[] | select(.Name == "Production") | .Id' <<< "$ENVIRONMENTS")"
+          VARIABLES="$(api_get "$OCTOPUS_URL/api/$SPACE_ID/variables/$VARIABLE_SET_ID")"
+
+          for name in ApkUrl NotenServerApiKey; do
+            variable_id="$(jq -er --arg name "$name" --arg environment "$PRODUCTION_ID" \
+              '[.Variables[]? | select(.Name == $name) | select((.Scope.Environment // []) | index($environment)) | .Id] | if length == 1 then .[0] else error("Expected one Production-scoped variable") end' \
+              <<< "$VARIABLES")"
+            if [[ "$name" == "ApkUrl" ]]; then
+              value="$APK_URL"
+            else
+              value="$NOTEN_SERVER_API_KEY"
+            fi
+            octopus project variables update "$name" \
+              --project "$PROJECT_ID" \
+              --id "$variable_id" \
+              --value "$value" \
+              --no-prompt
+          done
+          echo "Updated the Production APK URL and server API key."
+
       - name: Create and deploy Octopus release
+        if: github.event_name != 'workflow_dispatch' || inputs.deploy_to_octopus
         env:
           OCTOPUS_URL: https://franky.octopus.app
           OCTOPUS_API_KEY: ${{ secrets.OCTOPUS_API_KEY }}
@@ -151,8 +263,12 @@ jobs:
           octopus release create \
             --project "musiker_application" \
             --version "$VERSION" \
-            --release-notes "APK Release $VERSION"
+            --release-notes "APK Release $VERSION" \
+            --no-prompt
           octopus release deploy \
             --project "musiker_application" \
             --version "$VERSION" \
-            --environment "Production"
+            --environment "Production" \
+            --no-prompt \
+            --output-format basic \
+            | octopus task wait
