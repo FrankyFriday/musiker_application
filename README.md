@@ -14,6 +14,7 @@ Darstellung.
 - Automatischer Download der zum Stück, Instrument und zur Stimme passenden PDF
 - Offline-Notenliste, Suche und integrierter PDF-Viewer
 - Anzeige von Serverstatus, Wartungshinweisen und Update-Mitteilungen
+- Automatische lokale Verbindung zum Dirigenten-Hotspot bei Serverausfall
 - Android-Updates mit Prüfung von Version, Paketkennung und APK-Signatur
 
 ## Verbindung und Noten
@@ -33,6 +34,29 @@ Dateien werden nach dem Muster `Stück_Instrument_Stimme.pdf` benannt, zum
 Beispiel `Marsch_Trompete_1.pdf`. Die Auswahl in der App muss mit Instrument
 und Stimmennummer im Dateinamen übereinstimmen. Heruntergeladene PDFs werden im
 Anwendungsdatenverzeichnis des Geräts gespeichert.
+
+## Probe ohne Internet
+
+Aktiviere **Automatisch lokal verbinden** auf dem Musikerpult und verbinde das
+Gerät mit dem Hotspot des Dirigenten-Handys. Die App erkennt den lokalen
+Probenserver automatisch, wechselt bei einem Ausfall der Internetverbindung
+zu ihm und meldet den Wechsel. Sobald die Internetverbindung zurückkehrt,
+schaltet sie automatisch zum Notenserver zurück.
+
+Vor der Probe müssen die benötigten PDFs unter **Offline-Noten →
+Synchronisieren** heruntergeladen werden. Beim Offlinebetrieb kann die App
+keine neuen Dateien aus Nextcloud abrufen. Der Dirigent muss den
+Offline-Fallback ebenfalls einschalten; beide Apps müssen während der Probe
+geöffnet und im selben WLAN sein.
+Die lokale Sitzung verwendet WebSocket über TCP-Port `8765` und automatische
+Erkennung über UDP-Port `8766`. Falls UDP-Erkennung im WLAN gesperrt ist, kann
+die Hotspot-IP aus dem Dirigentenpult manuell eingegeben werden.
+Die lokale WebSocket-Verbindung ist unverschlüsselt. Nur einem privaten,
+passwortgeschützten Hotspot des Dirigenten beitreten, keinem öffentlichen WLAN.
+
+Android gestattet Apps nicht, einem WLAN-Hotspot ohne Systembestätigung
+beizutreten. Der WLAN-Schalter in der App öffnet deshalb die Android-
+WLAN-Einstellungen. Das Dirigenten-Handy muss den Hotspot manuell einschalten.
 
 ## Entwickeln und prüfen
 

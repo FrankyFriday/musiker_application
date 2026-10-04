@@ -49,31 +49,51 @@ class _OfflinePracticePageState extends State<OfflinePracticePage> {
       });
     }
     try {
+      final cachedFiles = await _nextcloudService.listCachedPdfs(
+        widget.instrument,
+        widget.voice,
+      );
+      if (!mounted) return;
+      if (cachedFiles.isNotEmpty) {
+        setState(() {
+          _pieces = _piecesFromFiles(cachedFiles);
+          _isLoading = false;
+        });
+      }
+    } on FileSystemException catch (error) {
+      if (mounted) setState(() => _error = error.message);
+    }
+
+    try {
       final files = await _nextcloudService.listAndDownloadPdfs(
         widget.instrument,
         widget.voice,
       );
-      final pieces = files
-          .map(
-            (file) => ReceivedPiece(
-              name:
-                  file.path.split(Platform.pathSeparator).last.split('_').first,
-              path: file.path,
-              receivedAt: DateTime.now(),
-            ),
-          )
-          .toList()
-        ..sort((a, b) => b.receivedAt.compareTo(a.receivedAt));
+      final pieces = _piecesFromFiles(files);
 
       if (!mounted) return;
-      setState(() => _pieces = pieces);
+      setState(() {
+        _pieces = pieces;
+        _error = null;
+      });
     } catch (error) {
       if (!mounted) return;
-      setState(() => _error = error.toString());
+      if (_pieces.isEmpty) setState(() => _error = error.toString());
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
+
+  List<ReceivedPiece> _piecesFromFiles(List<File> files) => files
+      .map(
+        (file) => ReceivedPiece(
+          name: file.path.split(Platform.pathSeparator).last.split('_').first,
+          path: file.path,
+          receivedAt: DateTime.now(),
+        ),
+      )
+      .toList()
+    ..sort((a, b) => b.receivedAt.compareTo(a.receivedAt));
 
   List<ReceivedPiece> get _filteredPieces {
     final query = _searchController.text.trim().toLowerCase();

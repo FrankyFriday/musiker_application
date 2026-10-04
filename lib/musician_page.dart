@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -12,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/app_config.dart';
 import '../models/update_info.dart';
 import '../services/nextcloud_service.dart';
+import '../services/local_session_discovery.dart';
 import '../services/notification_service.dart';
 import '../services/version_checker.dart';
 import '../ui/update_dialog.dart';
@@ -43,10 +45,13 @@ class MusicianPage extends StatefulWidget {
 
 class _MusicianPageState extends State<MusicianPage>
     with WidgetsBindingObserver {
+  static const _localNetworkChannel = MethodChannel('marschpad/local_network');
   final NextcloudService _nextcloudService = NextcloudService();
+  final LocalSessionDiscovery _localDiscovery = LocalSessionDiscovery();
   WebSocketChannel? _channel;
   Timer? _pingTimer;
   Timer? _reconnectTimer;
+  Timer? _cloudProbeTimer;
   final Duration _pingInterval = const Duration(seconds: 10);
 
   final List<ReceivedPiece> _received = [];
@@ -57,6 +62,8 @@ class _MusicianPageState extends State<MusicianPage>
   late bool _darkMode;
   bool _updateDialogShown = false;
   bool _connecting = false;
+  bool _offlineFallbackEnabled = false;
+  bool _usingLocalSession = false;
 
   @override
   void initState() {
@@ -66,7 +73,126 @@ class _MusicianPageState extends State<MusicianPage>
     _voice = widget.voice;
     _darkMode = widget.darkMode;
     _clientId = const Uuid().v4();
+    _loadOfflineFallback();
     _connect();
+  }
+
+  Future<void> _loadOfflineFallback() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted || !(prefs.getBool('offlineBackupEnabled') ?? false)) return;
+    setState(() => _offlineFallbackEnabled = true);
+    await _startLocalDiscovery();
+  }
+
+  Future<void> _toggleOfflineFallback() async {
+    final enabled = !_offlineFallbackEnabled;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('offlineBackupEnabled', enabled);
+    if (!mounted) return;
+    setState(() => _offlineFallbackEnabled = enabled);
+    if (enabled) {
+      await _startLocalDiscovery();
+      if (mounted) {
+        _showSnackBar(
+          'Offline-Fallback aktiv. Verbinde dieses Handy mit dem '
+          'Hotspot des Dirigenten.',
+        );
+      }
+
+      return;
+    }
+
+    await _localDiscovery.stop();
+    _cloudProbeTimer?.cancel();
+    if (_usingLocalSession) {
+      final localChannel = _channel;
+      _channel = null;
+      _usingLocalSession = false;
+      await localChannel?.sink.close();
+      if (mounted) setState(() => _status = 'Verbinde…');
+      _connect();
+    }
+    if (mounted) _showSnackBar('Offline-Fallback ausgeschaltet.');
+  }
+
+  Future<void> _openWifiSettings() async {
+    try {
+      await _localNetworkChannel.invokeMethod<void>('openWifiSettings');
+    } on PlatformException catch (error) {
+      if (!mounted) return;
+      _showSnackBar(
+        'WLAN-Einstellungen konnten nicht geöffnet werden: ${error.message}',
+      );
+    }
+  }
+
+  Future<void> _connectToLocalServerManually() async {
+    if (!_offlineFallbackEnabled || !mounted) {
+      _showSnackBar('Aktiviere zuerst den Offline-Fallback.');
+      return;
+    }
+    final controller = TextEditingController();
+    final input = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Lokalen Dirigenten verbinden'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.url,
+          decoration: const InputDecoration(
+            labelText: 'IP-Adresse',
+            hintText: '192.168.43.1',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text),
+            child: const Text('Verbinden'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (input == null || !mounted) return;
+
+    final value = input.trim();
+    final uri = Uri.tryParse(
+      value.contains('://')
+          ? value
+          : 'ws://$value${value.contains(':') ? '' : ':8765'}',
+    );
+    if (uri == null ||
+        !uri.hasAuthority ||
+        (uri.scheme != 'ws' && uri.scheme != 'wss')) {
+      _showSnackBar('Bitte eine gültige IP-Adresse eingeben.');
+      return;
+    }
+
+    final previousChannel = _channel;
+    _channel = null;
+    _usingLocalSession = false;
+    await previousChannel?.sink.close();
+    if (mounted) _connectLocal(uri);
+  }
+
+  Future<void> _startLocalDiscovery() async {
+    try {
+      await _localDiscovery.start((host) {
+        if (_offlineFallbackEnabled && _channel == null) {
+          _connectLocal(host);
+        }
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _offlineFallbackEnabled = false);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('offlineBackupEnabled', false);
+      _showSnackBar('Lokale Suche konnte nicht gestartet werden: $error');
+    }
   }
 
   @override
@@ -74,6 +200,8 @@ class _MusicianPageState extends State<MusicianPage>
     WidgetsBinding.instance.removeObserver(this);
     _pingTimer?.cancel();
     _reconnectTimer?.cancel();
+    _cloudProbeTimer?.cancel();
+    _localDiscovery.stop();
     _channel?.sink.close();
     super.dispose();
   }
@@ -109,24 +237,15 @@ class _MusicianPageState extends State<MusicianPage>
       final channel = kIsWeb
           ? WebSocketChannel.connect(uri)
           : IOWebSocketChannel.connect(uri.toString());
+      await channel.ready.timeout(const Duration(seconds: 8));
+      if (!mounted) {
+        await channel.sink.close();
+        return;
+      }
       _channel = channel;
-
-      channel.sink.add(jsonEncode({
-        'type': 'register',
-        'clientId': _clientId,
-        'role': 'musician',
-        'app': AppConfig.appId,
-        'instrument': _instrument,
-        'voice': _voice,
-      }));
-
-      channel.stream.listen(
-        _handleMessage,
-        onDone: _onDisconnected,
-        onError: _onError,
-      );
-
-      if (!mounted) return;
+      _usingLocalSession = false;
+      _register(channel);
+      _listen(channel);
       setState(() => _status = 'Verbunden');
       _startPing();
     } catch (e) {
@@ -137,6 +256,87 @@ class _MusicianPageState extends State<MusicianPage>
       _scheduleReconnect();
     } finally {
       _connecting = false;
+    }
+  }
+
+  void _register(WebSocketChannel channel) {
+    channel.sink.add(jsonEncode({
+      'type': 'register',
+      'clientId': _clientId,
+      'role': 'musician',
+      'app': AppConfig.appId,
+      'instrument': _instrument,
+      'voice': _voice,
+    }));
+  }
+
+  void _listen(WebSocketChannel channel) {
+    channel.stream.listen(
+      (message) => _handleMessage(message, channel),
+      onDone: () => _onDisconnected(channel),
+      onError: (error) => _onError(channel, error),
+    );
+  }
+
+  Future<void> _connectLocal(Uri host) async {
+    if (_connecting || _channel != null || !mounted) return;
+    _connecting = true;
+    WebSocketChannel? channel;
+    try {
+      channel = IOWebSocketChannel.connect(host);
+      await channel.ready.timeout(const Duration(seconds: 4));
+      if (!mounted || !_offlineFallbackEnabled || _channel != null) {
+        await channel.sink.close();
+        return;
+      }
+      _channel = channel;
+      _usingLocalSession = true;
+      _register(channel);
+      _listen(channel);
+      _startPing();
+      _cloudProbeTimer?.cancel();
+      _cloudProbeTimer = Timer.periodic(
+        const Duration(seconds: 15),
+        (_) => _probeCloudConnection(),
+      );
+      setState(() => _status = 'Lokal verbunden');
+      _showSnackBar(
+          'Server nicht erreichbar – lokal mit dem Dirigenten verbunden.');
+    } catch (error) {
+      await channel?.sink.close();
+      debugPrint('Lokale Verbindung fehlgeschlagen: $error');
+    } finally {
+      _connecting = false;
+    }
+  }
+
+  Future<void> _probeCloudConnection() async {
+    if (!mounted || !_usingLocalSession || _connecting) return;
+    WebSocketChannel? cloudChannel;
+    try {
+      final uri = Uri.parse('wss://ws.notenserver.duckdns.org');
+      cloudChannel = kIsWeb
+          ? WebSocketChannel.connect(uri)
+          : IOWebSocketChannel.connect(uri.toString());
+      await cloudChannel.ready.timeout(const Duration(seconds: 5));
+      if (!mounted || !_usingLocalSession) {
+        await cloudChannel.sink.close();
+        return;
+      }
+      final localChannel = _channel;
+      _channel = cloudChannel;
+      _usingLocalSession = false;
+      _register(cloudChannel);
+      _listen(cloudChannel);
+      _cloudProbeTimer?.cancel();
+      _cloudProbeTimer = null;
+      _startPing();
+      await localChannel?.sink.close();
+      setState(() => _status = 'Verbunden');
+      _showSnackBar(
+          'Internetverbindung wiederhergestellt – zurück zum Server.');
+    } catch (_) {
+      await cloudChannel?.sink.close();
     }
   }
 
@@ -153,19 +353,27 @@ class _MusicianPageState extends State<MusicianPage>
     });
   }
 
-  void _onDisconnected() {
+  void _onDisconnected(WebSocketChannel channel) {
+    if (!identical(_channel, channel)) return;
     debugPrint('[WS] Verbindung getrennt');
     _pingTimer?.cancel();
     _channel = null;
+    _usingLocalSession = false;
+    _cloudProbeTimer?.cancel();
+    _cloudProbeTimer = null;
     if (!mounted) return;
     setState(() => _status = 'Getrennt');
     _scheduleReconnect();
   }
 
-  void _onError(dynamic e) {
+  void _onError(WebSocketChannel channel, dynamic e) {
+    if (!identical(_channel, channel)) return;
     debugPrint('[WS] Fehler: $e');
     _pingTimer?.cancel();
     _channel = null;
+    _usingLocalSession = false;
+    _cloudProbeTimer?.cancel();
+    _cloudProbeTimer = null;
     if (!mounted) return;
     setState(() => _status = 'Fehler');
     _scheduleReconnect();
@@ -174,12 +382,15 @@ class _MusicianPageState extends State<MusicianPage>
   // =========================
   // WEBSOCKET MESSAGE HANDLER
   // =========================
-  Future<void> _handleMessage(dynamic message) async {
+  Future<void> _handleMessage(
+    dynamic message,
+    WebSocketChannel sourceChannel,
+  ) async {
     final map = jsonDecode(message as String);
 
     switch (map['type']) {
       case 'ping':
-        _channel?.sink.add(jsonEncode({'type': 'pong'}));
+        sourceChannel.sink.add(jsonEncode({'type': 'pong'}));
         return;
 
       case 'pong':
@@ -241,8 +452,6 @@ class _MusicianPageState extends State<MusicianPage>
 
         for (final p in ended) {
           p.active = false;
-          final file = File(p.path);
-          if (await file.exists()) await file.delete();
         }
 
         if (mounted) {
@@ -256,7 +465,9 @@ class _MusicianPageState extends State<MusicianPage>
         break;
 
       case 'status':
-        if (mounted) setState(() => _status = map['text']);
+        if (mounted && map['text'] is String) {
+          setState(() => _status = map['text'] as String);
+        }
         break;
 
       default:
@@ -345,6 +556,17 @@ class _MusicianPageState extends State<MusicianPage>
           ),
           actions: [
             IconButton(
+              tooltip: _offlineFallbackEnabled
+                  ? 'Offline-Fallback ausschalten'
+                  : 'Offline-Fallback einschalten',
+              onPressed: _toggleOfflineFallback,
+              icon: Icon(
+                _offlineFallbackEnabled
+                    ? Icons.wifi_tethering_rounded
+                    : Icons.wifi_tethering_off_rounded,
+              ),
+            ),
+            IconButton(
               tooltip: 'Offline-Noten',
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute(
@@ -374,6 +596,37 @@ class _MusicianPageState extends State<MusicianPage>
                 instrument: _instrument,
                 voice: _voice,
                 status: _status,
+              ),
+              Card(
+                margin: const EdgeInsets.fromLTRB(20, -10, 20, 14),
+                child: Column(
+                  children: [
+                    SwitchListTile(
+                      value: _offlineFallbackEnabled,
+                      onChanged: (_) => _toggleOfflineFallback(),
+                      secondary: IconButton(
+                        tooltip: 'WLAN-Einstellungen öffnen',
+                        onPressed: _openWifiSettings,
+                        icon: const Icon(Icons.wifi_tethering_rounded),
+                      ),
+                      title: const Text('Automatisch lokal verbinden'),
+                      subtitle: Text(
+                        _usingLocalSession
+                            ? 'Mit dem Dirigenten-Hotspot verbunden'
+                            : 'Hotspot verbinden; schaltet bei Serverausfall lokal um',
+                      ),
+                    ),
+                    if (_offlineFallbackEnabled)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                          onPressed: _connectToLocalServerManually,
+                          icon: const Icon(Icons.link_rounded),
+                          label: const Text('IP manuell eingeben'),
+                        ),
+                      ),
+                  ],
+                ),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 2, 20, 12),
@@ -473,7 +726,7 @@ class _InfoHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final connected = status.toLowerCase() == 'verbunden';
+    final connected = status.toLowerCase().contains('verbunden');
     final statusColor = connected ? const Color(0xFF8DE3C0) : AppTheme.amber;
 
     return Container(

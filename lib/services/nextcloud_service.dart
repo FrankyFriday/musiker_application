@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -47,6 +48,9 @@ class NextcloudService {
   }
 
   Future<File> downloadPdf(String filename) async {
+    final cached = await _findCachedPdf(filename);
+    if (cached != null) return cached;
+
     String? path;
     for (final candidate in await _listAllPdfs()) {
       if (candidate.split('/').last == filename) {
@@ -68,8 +72,16 @@ class NextcloudService {
     return _downloadFromPath(path, localFile);
   }
 
-  Future<List<File>> listAndDownloadPdfs(String instrument, String voice) async {
-    final allFiles = await _listAllPdfs();
+  Future<List<File>> listAndDownloadPdfs(
+      String instrument, String voice) async {
+    List<String> allFiles;
+    try {
+      allFiles = await _listAllPdfs();
+    } on TimeoutException {
+      return listCachedPdfs(instrument, voice);
+    } on IOException {
+      return listCachedPdfs(instrument, voice);
+    }
     final filtered = allFiles
         .where((path) => path.endsWith('_${instrument}_$voice.pdf'))
         .toList();
@@ -89,6 +101,36 @@ class NextcloudService {
     }
 
     return downloadedFiles;
+  }
+
+  Future<List<File>> listCachedPdfs(String instrument, String voice) async {
+    final dir = await getApplicationDocumentsDirectory();
+    if (!await dir.exists()) return [];
+    final files = await dir
+        .list(recursive: true, followLinks: false)
+        .where((entity) =>
+            entity is File &&
+            entity.path.toLowerCase().endsWith('.pdf') &&
+            entity.path
+                .split(Platform.pathSeparator)
+                .last
+                .endsWith('_${instrument}_$voice.pdf'))
+        .map((entity) => entity as File)
+        .toList();
+    return files;
+  }
+
+  Future<File?> _findCachedPdf(String filename) async {
+    final dir = await getApplicationDocumentsDirectory();
+    if (!await dir.exists()) return null;
+    await for (final entity in dir.list(recursive: true, followLinks: false)) {
+      if (entity is File &&
+          entity.path.split(Platform.pathSeparator).last == filename &&
+          await entity.length() > 0) {
+        return entity;
+      }
+    }
+    return null;
   }
 
   Future<File> _downloadFromPath(String relativePath, File localFile) async {
