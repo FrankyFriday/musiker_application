@@ -46,4 +46,4 @@ app.*.map.json
 
 # env files
 assets/.env
-
+assets/.env.example
