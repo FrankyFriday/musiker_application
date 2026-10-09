@@ -232,7 +232,7 @@ class _MusicianPageState extends State<MusicianPage>
     if (_connecting || !mounted) return;
     _connecting = true;
     _channel?.sink.close();
-    const domain = 'ws.notenserver.duckdns.org';
+    const domain = 'notenserver.mattis-westerhoff.de';
 
     try {
       final uri = Uri.parse('wss://$domain');
@@ -316,7 +316,7 @@ class _MusicianPageState extends State<MusicianPage>
     if (!mounted || !_usingLocalSession || _connecting) return;
     WebSocketChannel? cloudChannel;
     try {
-      final uri = Uri.parse('wss://ws.notenserver.duckdns.org');
+      final uri = Uri.parse('wss://notenserver.mattis-westerhoff.de');
       cloudChannel = kIsWeb
           ? WebSocketChannel.connect(uri)
           : IOWebSocketChannel.connect(uri.toString());

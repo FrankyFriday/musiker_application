@@ -19,7 +19,7 @@ Darstellung.
 
 ## Verbindung und Noten
 
-Die App registriert sich über `wss://ws.notenserver.duckdns.org` mit der
+Die App registriert sich über `wss://notenserver.mattis-westerhoff.de` mit der
 Kennung `musiker_application` (kanonische Serverkennung:
 `musiker_app`). Die Notenliste wird über `GET /api/notes` geladen. Einzelne
 PDFs kommen über `GET /api/notes/<relativer-pfad>` vom Notenserver-Proxy;

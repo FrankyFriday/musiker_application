@@ -4,5 +4,5 @@ class AppConfig {
 
   static bool matchesServerAppId(Object? value) =>
       value == appId || value == canonicalServerAppId;
-  static const String wsDomain = 'ws.notenserver.duckdns.org';
+  static const String wsDomain = 'notenserver.mattis-westerhoff.de';
 }
